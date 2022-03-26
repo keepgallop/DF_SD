@@ -128,6 +128,7 @@ def get_normalization(normalization: str, num_channels: int, dim: int):
 
 
 class Concatenate(nn.Module):
+
     def __init__(self):
         super(Concatenate, self).__init__()
 
@@ -143,6 +144,7 @@ class DownBlock(nn.Module):
     An activation follows each convolution.
     A normalization layer follows each convolution.
     """
+
     def __init__(
         self,
         in_channels: int,
@@ -232,6 +234,7 @@ class UpBlock(nn.Module):
     An activation follows each convolution.
     A normalization layer follows each convolution.
     """
+
     def __init__(
         self,
         in_channels: int,
@@ -351,6 +354,7 @@ class UpBlock(nn.Module):
 
 
 class UNet(nn.Module):
+
     def __init__(
         self,
         in_channels=3,
@@ -417,16 +421,16 @@ class UNet(nn.Module):
         self.feature_scaling_layer = nn.Upsample(scale_factor=2,
                                                  mode='bilinear',
                                                  align_corners=True)
-        #  convolution
-        self.conv_after_scaling = get_conv_layer(
-            num_filters_out,
-            self.out_channels,
-            kernel_size=3,
-            stride=2,
-            padding=1,
-            bias=True,
-            dim=self.dim,
-        )
+        # #  convolution
+        # self.conv_after_scaling = get_conv_layer(
+        #     num_filters_out,
+        #     self.out_channels,
+        #     kernel_size=1,
+        #     stride=1,
+        #     padding=0,
+        #     bias=True,
+        #     dim=self.dim,
+        # )
 
         # # add a gaussian filter layer
         # self.pad = nn.ReflectionPad2d(1)
@@ -434,7 +438,7 @@ class UNet(nn.Module):
 
         # final convolution
         self.conv_final = get_conv_layer(
-            self.out_channels,
+            num_filters_out,
             self.out_channels,
             kernel_size=1,
             stride=1,
@@ -495,7 +499,7 @@ class UNet(nn.Module):
             x = module(before_pool, x)
 
         x = self.feature_scaling_layer(x)
-        x = self.conv_after_scaling(x)
+        # x = self.conv_after_scaling(x)
         # x = self.pad(x)
         # x = self.smoothing(x)
         x = self.conv_final(x)

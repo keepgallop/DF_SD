@@ -2,7 +2,7 @@
 @Description  : 
 @Author       : Chi Liu
 @Date         : 2022-01-14 17:20:38
-@LastEditTime : 2022-02-19 21:45:07
+@LastEditTime : 2022-03-27 02:09:55
 '''
 
 import random
@@ -57,6 +57,7 @@ class DataAugmentation(object):
         return self.random_combine()(img)
 
     def random_combine(self):
+
         def compose(f, g):
             return lambda x: g(f(x))
 
@@ -72,13 +73,11 @@ class DataAugmentation(object):
 
     def gaussian_blur(self, img):
         kernel_size = random.choice([1, 3, 5, 7, 9])
-        tf = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.GaussianBlur(kernel_size=kernel_size, sigma=(0.1, 2)),
-                transforms.ToPILImage(),
-            ]
-        )
+        tf = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.GaussianBlur(kernel_size=kernel_size, sigma=(0.1, 2)),
+            transforms.ToPILImage(),
+        ])
         img = tf(img)
         return img
 
@@ -101,68 +100,59 @@ class DataAugmentation(object):
         return img
 
     def color_jitter(self, img):
-        tf = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.ColorJitter(
-                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2
-                ),
-                transforms.ToPILImage(),
-            ]
-        )
+        tf = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.ColorJitter(brightness=0.2,
+                                   contrast=0.2,
+                                   saturation=0.2,
+                                   hue=0.2),
+            transforms.ToPILImage(),
+        ])
         img = tf(img)
         return img
 
     def geometry(self, img):
-        tf = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.RandomHorizontalFlip(p=self.prob),
-                transforms.RandomVerticalFlip(p=self.prob),
-                transforms.ToPILImage(),
-            ]
-        )
+        tf = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.RandomHorizontalFlip(p=self.prob),
+            transforms.RandomVerticalFlip(p=self.prob),
+            transforms.ToPILImage(),
+        ])
         img = tf(img)
         return img
 
     def high_level_color(self, img):
         """Danger to use: May significantly change the spectrum
         """
-        tf = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.RandomPosterize(2, p=self.prob),
-                # transforms.RandomSolarize(threshold, p=0.5),
-                transforms.RandomAdjustSharpness(sharpness_factor=2, p=self.prob),
-                transforms.RandomAutocontrast(p=self.prob),
-                transforms.RandomEqualize(p=self.prob),
-                transforms.ToPILImage(),
-            ]
-        )
+        tf = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.RandomPosterize(2, p=self.prob),
+            # transforms.RandomSolarize(threshold, p=0.5),
+            transforms.RandomAdjustSharpness(sharpness_factor=2, p=self.prob),
+            transforms.RandomAutocontrast(p=self.prob),
+            transforms.RandomEqualize(p=self.prob),
+            transforms.ToPILImage(),
+        ])
         img = tf(img)
         return img
 
     def cropping(self, img):
-        tf = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.RandomResizedCrop(
-                    img.size, scale=(0.8, 1.0), ratio=(0.75, 1.3333333333333333)
-                ),
-                transforms.ToPILImage(),
-            ]
-        )
+        tf = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.RandomResizedCrop(img.size,
+                                         scale=(0.8, 1.0),
+                                         ratio=(0.75, 1.3333333333333333)),
+            transforms.ToPILImage(),
+        ])
         img = tf(img)
         return img
 
     def rotation(self, img):
-        tf = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.RandomRotation(degrees=10),
-                transforms.ToPILImage(),
-            ]
-        )
+        tf = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.RandomRotation(degrees=10),
+            transforms.ToPILImage(),
+        ])
         img = tf(img)
         return img
 
@@ -182,6 +172,7 @@ class DCT(object):
         return self.combine()(img).astype(np.float32)
 
     def combine(self):
+
         def compose(f, g):
             return lambda x: g(f(x))
 
@@ -194,9 +185,8 @@ class DCT(object):
         return arr.astype(np.float32)
 
     def normalize(self, arr):
-        arr = (np.max(arr, axis=(0, 1)) - arr) / (
-            np.max(arr, axis=(0, 1)) - (np.min(arr, axis=(0, 1)))
-        )
+        arr = (np.max(arr, axis=(0, 1)) - arr) / (np.max(arr, axis=(0, 1)) -
+                                                  (np.min(arr, axis=(0, 1))))
         return arr.astype(np.float32)
 
     def log_scale(self, arr, epsilon=1e-12):
@@ -227,7 +217,6 @@ class Wavelet(object):
         return cA
 
     def normalize(self, arr):
-        arr = (np.max(arr, axis=(0, 1)) - arr) / (
-            np.max(arr, axis=(0, 1)) - (np.min(arr, axis=(0, 1)))
-        )
+        arr = (np.max(arr, axis=(0, 1)) - arr) / (np.max(arr, axis=(0, 1)) -
+                                                  (np.min(arr, axis=(0, 1))))
         return arr

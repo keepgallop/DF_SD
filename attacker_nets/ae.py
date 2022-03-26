@@ -1,469 +1,234 @@
-from torch import nn
-import torch
-import torch
+# ###############################################################################
+# # Part of code from
+# # https://github.com/NVlabs/MUNIT/blob/master/networks.py
+# ###############################################################################
+# import sys
 
-# from SpectralFunctions import GaussianSmoothing
+# sys.path.append('../')
+# import torch.nn as nn
+# from utils.utils import weights_init
+# import torch
 
-"""code is based on https://towardsdatascience.com/creating-and-training-a-u-net-model-with-pytorch-for-2d-3d-semantic-segmentation-model-building-6ab09d6a0862
+# class AE(nn.Module):
 
-"""
+#     def __init__(self,
+#                  input_dim,
+#                  output_dim,
+#                  dim,
+#                  n_blk,
+#                  norm='none',
+#                  activ='relu'):
+#         super(AE, self).__init__()
+#         self.model = []
+#         self.model += [
+#             LinearBlock(input_dim, dim, norm=norm, activation=activ)
+#         ]
+#         for i in range(n_blk - 2):
+#             self.model += [LinearBlock(dim, dim, norm=norm, activation=activ)]
+#         self.model += [
+#             LinearBlock(dim, output_dim, norm='none', activation='tanh')
+#         ]
+#         self.model = nn.Sequential(*self.model)
+#         weights_init(self.model)
+
+#     def forward(self, x):
+#         sz = x.shape
+#         return self.model(x.view(x.size(0), -1)).view(sz)
+
+# class LinearBlock(nn.Module):
+
+#     def __init__(self, input_dim, output_dim, norm='none', activation='relu'):
+#         super(LinearBlock, self).__init__()
+#         use_bias = True
+#         # initialize fully connected layer
+#         if norm == 'sn':
+#             self.fc = SpectralNorm(
+#                 nn.Linear(input_dim, output_dim, bias=use_bias))
+#         else:
+#             self.fc = nn.Linear(input_dim, output_dim, bias=use_bias)
+
+#         # initialize normalization
+#         norm_dim = output_dim
+#         if norm == 'bn':
+#             self.norm = nn.BatchNorm1d(norm_dim)
+#         elif norm == 'in':
+#             self.norm = nn.InstanceNorm1d(norm_dim)
+#         elif norm == 'ln':
+#             self.norm = LayerNorm(norm_dim)
+#         elif norm == 'none' or norm == 'sn':
+#             self.norm = None
+#         else:
+#             assert 0, "Unsupported normalization: {}".format(norm)
+
+#         # initialize activation
+#         if activation == 'relu':
+#             self.activation = nn.ReLU(inplace=True)
+#         elif activation == 'lrelu':
+#             self.activation = nn.LeakyReLU(0.2, inplace=True)
+#         elif activation == 'prelu':
+#             self.activation = nn.PReLU()
+#         elif activation == 'selu':
+#             self.activation = nn.SELU(inplace=True)
+#         elif activation == 'tanh':
+#             self.activation = nn.Tanh()
+#         elif activation == 'none':
+#             self.activation = None
+#         else:
+#             assert 0, "Unsupported activation: {}".format(activation)
+
+#     def forward(self, x):
+#         out = self.fc(x)
+#         if self.norm:
+#             out = self.norm(out)
+#         if self.activation:
+#             out = self.activation(out)
+#         return out
+
+# class LayerNorm(nn.Module):
+
+#     def __init__(self, num_features, eps=1e-5, affine=True):
+#         super(LayerNorm, self).__init__()
+#         self.num_features = num_features
+#         self.affine = affine
+#         self.eps = eps
+
+#         if self.affine:
+#             self.gamma = nn.Parameter(torch.Tensor(num_features).uniform_())
+#             self.beta = nn.Parameter(torch.zeros(num_features))
+
+#     def forward(self, x):
+#         shape = [-1] + [1] * (x.dim() - 1)
+#         # print(x.size())
+#         if x.size(0) == 1:
+#             # These two lines run much faster in pytorch 0.4 than the two lines listed below.
+#             mean = x.view(-1).mean().view(*shape)
+#             std = x.view(-1).std().view(*shape)
+#         else:
+#             mean = x.view(x.size(0), -1).mean(1).view(*shape)
+#             std = x.view(x.size(0), -1).std(1).view(*shape)
+
+#         x = (x - mean) / (std + self.eps)
+
+#         if self.affine:
+#             shape = [1, -1] + [1] * (x.dim() - 2)
+#             x = x * self.gamma.view(*shape) + self.beta.view(*shape)
+#         return x
+
+# def l2normalize(v, eps=1e-12):
+#     return v / (v.norm() + eps)
+
+# class SpectralNorm(nn.Module):
+#     """
+#     Based on the paper "Spectral Normalization for Generative Adversarial Networks" by Takeru Miyato, Toshiki Kataoka, Masanori Koyama, Yuichi Yoshida
+#     and the Pytorch implementation https://github.com/christiancosgrove/pytorch-spectral-normalization-gan
+#     """
+
+#     def __init__(self, module, name='weight', power_iterations=1):
+#         super(SpectralNorm, self).__init__()
+#         self.module = module
+#         self.name = name
+#         self.power_iterations = power_iterations
+#         if not self._made_params():
+#             self._make_params()
+
+#     def _update_u_v(self):
+#         u = getattr(self.module, self.name + "_u")
+#         v = getattr(self.module, self.name + "_v")
+#         w = getattr(self.module, self.name + "_bar")
+
+#         height = w.data.shape[0]
+#         for _ in range(self.power_iterations):
+#             v.data = l2normalize(
+#                 torch.mv(torch.t(w.view(height, -1).data), u.data))
+#             u.data = l2normalize(torch.mv(w.view(height, -1).data, v.data))
+
+#         # sigma = torch.dot(u.data, torch.mv(w.view(height,-1).data, v.data))
+#         sigma = u.dot(w.view(height, -1).mv(v))
+#         setattr(self.module, self.name, w / sigma.expand_as(w))
+
+#     def _made_params(self):
+#         try:
+#             u = getattr(self.module, self.name + "_u")
+#             v = getattr(self.module, self.name + "_v")
+#             w = getattr(self.module, self.name + "_bar")
+#             return True
+#         except AttributeError:
+#             return False
+
+#     def _make_params(self):
+#         w = getattr(self.module, self.name)
+
+#         height = w.data.shape[0]
+#         width = w.view(height, -1).data.shape[1]
+
+#         u = nn.Parameter(w.data.new(height).normal_(0, 1), requires_grad=False)
+#         v = nn.Parameter(w.data.new(width).normal_(0, 1), requires_grad=False)
+#         u.data = l2normalize(u.data)
+#         v.data = l2normalize(v.data)
+#         w_bar = nn.Parameter(w.data)
+
+#         del self.module._parameters[self.name]
+
+#         self.module.register_parameter(self.name + "_u", u)
+#         self.module.register_parameter(self.name + "_v", v)
+#         self.module.register_parameter(self.name + "_bar", w_bar)
+
+#     def forward(self, *args):
+#         self._update_u_v()
+#         return self.module.forward(*args)
+
+# build autoencoder network
+
+import torch.nn as nn
+import torch.nn.functional as F
 
 
-def conv_layer(dim: int):
-    if dim == 3:
-        return nn.Conv3d
-    elif dim == 2:
-        return nn.Conv2d
+class AE(nn.Module):
 
-
-def get_conv_layer(
-    in_channels: int,
-    out_channels: int,
-    kernel_size: int = 3,
-    stride: int = 1,
-    padding: int = 1,
-    bias: bool = True,
-    dim: int = 2,
-):
-    return conv_layer(dim)(
-        in_channels,
-        out_channels,
-        kernel_size=kernel_size,
-        stride=stride,
-        padding=padding,
-        bias=bias,
-    )
-
-
-def conv_transpose_layer(dim: int):
-    if dim == 3:
-        return nn.ConvTranspose3d
-    elif dim == 2:
-        return nn.ConvTranspose2d
-
-
-def get_up_layer(
-    in_channels: int,
-    out_channels: int,
-    kernel_size: int = 2,
-    stride: int = 2,
-    dim: int = 3,
-    up_mode: str = 'transposed',
-):
-    if up_mode == 'transposed':
-        return conv_transpose_layer(dim)(
-            in_channels, out_channels, kernel_size=kernel_size, stride=stride
-        )
-    else:
-        return nn.Upsample(scale_factor=2.0, mode=up_mode)
-
-
-def maxpool_layer(dim: int):
-    if dim == 3:
-        return nn.MaxPool3d
-    elif dim == 2:
-        return nn.MaxPool2d
-
-
-def get_maxpool_layer(
-    kernel_size: int = 2, stride: int = 2, padding: int = 0, dim: int = 2
-):
-    return maxpool_layer(dim=dim)(
-        kernel_size=kernel_size, stride=stride, padding=padding
-    )
-
-
-def get_activation(activation: str):
-    if activation == 'relu':
-        return nn.ReLU()
-    elif activation == 'leaky':
-        return nn.LeakyReLU(negative_slope=0.1)
-    elif activation == 'elu':
-        return nn.ELU()
-
-
-def get_normalization(normalization: str, num_channels: int, dim: int):
-    if normalization == 'batch':
-        if dim == 3:
-            return nn.BatchNorm3d(num_channels)
-        elif dim == 2:
-            return nn.BatchNorm2d(num_channels)
-    elif normalization == 'instance':
-        if dim == 3:
-            return nn.InstanceNorm3d(num_channels)
-        elif dim == 2:
-            return nn.InstanceNorm2d(num_channels)
-    elif 'group' in normalization:
-        num_groups = int(
-            normalization.partition('group')[-1]
-        )  # get the group size from string
-        return nn.GroupNorm(num_groups=num_groups, num_channels=num_channels)
-
-
-class DownBlock(nn.Module):
-    """
-    A helper Module that performs 2 Convolutions and 1 MaxPool.
-    An activation follows each convolution.
-    A normalization layer follows each convolution.
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        pooling: bool = True,
-        activation: str = 'relu',
-        normalization: str = None,
-        dim: str = 2,
-        conv_mode: str = 'same',
-    ):
-        super().__init__()
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.pooling = pooling
-        self.normalization = normalization
-        if conv_mode == 'same':
-            self.padding = 1
-        elif conv_mode == 'valid':
-            self.padding = 0
-        self.dim = dim
-        self.activation = activation
-
-        # conv layers
-        self.conv1 = get_conv_layer(
-            self.in_channels,
-            self.out_channels,
-            kernel_size=3,
-            stride=1,
-            padding=self.padding,
-            bias=True,
-            dim=self.dim,
-        )
-        self.conv2 = get_conv_layer(
-            self.out_channels,
-            self.out_channels,
-            kernel_size=3,
-            stride=1,
-            padding=self.padding,
-            bias=True,
-            dim=self.dim,
-        )
-
-        # pooling layer
-        if self.pooling:
-            self.pool = get_maxpool_layer(
-                kernel_size=2, stride=2, padding=0, dim=self.dim
-            )
-
-        # activation layers
-        self.act1 = get_activation(self.activation)
-        self.act2 = get_activation(self.activation)
-
-        # normalization layers
-        if self.normalization:
-            self.norm1 = get_normalization(
-                normalization=self.normalization,
-                num_channels=self.out_channels,
-                dim=self.dim,
-            )
-            self.norm2 = get_normalization(
-                normalization=self.normalization,
-                num_channels=self.out_channels,
-                dim=self.dim,
-            )
+    def __init__(self):
+        super(AE, self).__init__()
+        self.conv1 = nn.Conv2d(3, 16, 3, padding=1)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.conv2 = nn.Conv2d(16, 8, 3, padding=1)
+        self.bn2 = nn.BatchNorm2d(8)
+        self.conv3 = nn.Conv2d(8, 8, 3, padding=1)
+        self.bn3 = nn.BatchNorm2d(32)
+        self.conv4 = nn.Conv2d(8, 3, 3, padding=1)
+        self.bn4 = nn.BatchNorm2d(3)
+        self.convt1 = nn.ConvTranspose2d(8, 8, 2, stride=2)
+        self.convt2 = nn.ConvTranspose2d(8, 16, 2, stride=2)
+        self.convt3 = nn.ConvTranspose2d(16, 32, 2, stride=2)
+        self.convt4 = nn.ConvTranspose2d(32, 16, 2, stride=2)
+        self.pool = nn.MaxPool2d(2, 2)
+        # Xavier initialization
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.xavier_normal(m.weight.data)
+                nn.init.normal(m.bias.data)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def forward(self, x):
-        y = self.conv1(x)  # convolution 1
-        y = self.act1(y)  # activation 1
-        if self.normalization:
-            y = self.norm1(y)  # normalization 1
-        y = self.conv2(y)  # convolution 2
-        y = self.act2(y)  # activation 2
-        if self.normalization:
-            y = self.norm2(y)  # normalization 2
+        x = self.conv1(x)
+        x = self.pool(F.relu(self.bn1(x)))  # out [16, N/2, N/2, 1]
+        x = self.conv2(x)
+        x = self.pool(F.relu(self.bn2(x)))  # out [8, N/4, N/4, 1]
+        x = self.conv3(x)
+        x = self.pool(F.relu(self.bn2(x)))  # out [8, N/8, N/8, 1]
 
-        before_pooling = y  # save the outputs before the pooling operation
-        if self.pooling:
-            y = self.pool(y)  # pooling
-        return y, before_pooling
+        x = self.convt1(x)
+        x = F.relu(self.bn2(x))  # out [8, N/4, N/4, 1]
+        x = self.convt2(x)
+        x = F.relu(self.bn1(x))  # out [16, N/2, N/2, 1]
+        x = self.convt3(x)
+        x = F.relu(self.bn3(x))  # out [32, N, N, 1]
+        x = self.convt4(x)
+        x = F.relu(self.bn1(x))  # out [16, 2N, 2N, 1]
 
+        x = self.conv2(x)
+        x = F.relu(self.bn2(x))  # out [8, 2N, 2N, 1]
+        x = self.conv4(x)
+        x = F.relu(self.bn4(x))  # out [3, 2N, 2N, 1]
 
-class UpBlock(nn.Module):
-    """
-    A helper Module that performs 2 Convolutions and 1 UpConvolution/Upsample.
-    An activation follows each convolution.
-    A normalization layer follows each convolution.
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        activation: str = 'relu',
-        normalization: str = None,
-        dim: int = 3,
-        conv_mode: str = 'same',
-        up_mode: str = 'transposed',
-    ):
-        super().__init__()
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.normalization = normalization
-        if conv_mode == 'same':
-            self.padding = 1
-        elif conv_mode == 'valid':
-            self.padding = 0
-        self.dim = dim
-        self.activation = activation
-        self.up_mode = up_mode
-
-        # upconvolution/upsample layer
-        self.up = get_up_layer(
-            self.in_channels,
-            self.out_channels,
-            kernel_size=2,
-            stride=2,
-            dim=self.dim,
-            up_mode=self.up_mode,
-        )
-
-        # conv layers
-        self.conv0 = get_conv_layer(
-            self.in_channels,
-            self.out_channels,
-            kernel_size=1,
-            stride=1,
-            padding=0,
-            bias=True,
-            dim=self.dim,
-        )
-        self.conv1 = get_conv_layer(
-            2 * self.out_channels,
-            self.out_channels,
-            kernel_size=3,
-            stride=1,
-            padding=self.padding,
-            bias=True,
-            dim=self.dim,
-        )
-        self.conv2 = get_conv_layer(
-            self.out_channels,
-            self.out_channels,
-            kernel_size=3,
-            stride=1,
-            padding=self.padding,
-            bias=True,
-            dim=self.dim,
-        )
-
-        # activation layers
-        self.act0 = get_activation(self.activation)
-        self.act1 = get_activation(self.activation)
-        self.act2 = get_activation(self.activation)
-
-        # normalization layers
-        if self.normalization:
-            self.norm0 = get_normalization(
-                normalization=self.normalization,
-                num_channels=self.out_channels,
-                dim=self.dim,
-            )
-            self.norm1 = get_normalization(
-                normalization=self.normalization,
-                num_channels=self.out_channels,
-                dim=self.dim,
-            )
-            self.norm2 = get_normalization(
-                normalization=self.normalization,
-                num_channels=self.out_channels,
-                dim=self.dim,
-            )
-
-    def forward(self, encoder_layer, decoder_layer):
-        """Forward pass
-        Arguments:
-            encoder_layer: Tensor from the encoder pathway
-            decoder_layer: Tensor from the decoder pathway (to be up'd)
-        """
-        up_layer = self.up(decoder_layer)  # up-convolution/up-sampling
-
-        if self.up_mode != 'transposed':
-            # We need to reduce the channel dimension with a conv layer
-            up_layer = self.conv0(up_layer)  # convolution 0
-        up_layer = self.act0(up_layer)  # activation 0
-        if self.normalization:
-            up_layer = self.norm0(up_layer)  # normalization 0
-
-        y = self.conv1(up_layer)  # convolution 1
-        y = self.act1(y)  # activation 1
-        if self.normalization:
-            y = self.norm1(y)  # normalization 1
-        y = self.conv2(y)  # convolution 2
-        y = self.act2(y)  # acivation 2
-        if self.normalization:
-            y = self.norm2(y)  # normalization 2
-        return y
-
-
-class DAE(nn.Module):
-    def __init__(
-        self,
-        in_channels=3,
-        out_channels=3,
-        n_blocks=5,
-        start_filters=32,
-        activation='relu',
-        normalization='batch',
-        conv_mode='same',
-        dim=2,
-        up_mode='bilinear',
-    ):
-        super().__init__()
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.n_blocks = n_blocks
-        self.start_filters = start_filters
-        self.activation = activation
-        self.normalization = normalization
-        self.conv_mode = conv_mode
-        self.dim = dim
-        self.up_mode = up_mode
-
-        self.down_blocks = []
-        self.up_blocks = []
-
-        # create encoder path
-        for i in range(self.n_blocks):
-            num_filters_in = self.in_channels if i == 0 else num_filters_out
-            num_filters_out = self.start_filters * (2**i)
-            pooling = True if i < self.n_blocks - 1 else False
-
-            down_block = DownBlock(
-                in_channels=num_filters_in,
-                out_channels=num_filters_out,
-                pooling=pooling,
-                activation=self.activation,
-                normalization=self.normalization,
-                conv_mode=self.conv_mode,
-                dim=self.dim,
-            )
-
-            self.down_blocks.append(down_block)
-
-        # create decoder path (requires only n_blocks-1 blocks)
-        for i in range(n_blocks - 1):
-            num_filters_in = num_filters_out
-            num_filters_out = num_filters_in // 2
-
-            up_block = UpBlock(
-                in_channels=num_filters_in,
-                out_channels=num_filters_out,
-                activation=self.activation,
-                normalization=self.normalization,
-                conv_mode=self.conv_mode,
-                dim=self.dim,
-                up_mode=self.up_mode,
-            )
-
-            self.up_blocks.append(up_block)
-
-        # add feature scaling to avoid frequency discrepancy (https://github.com/sutd-visual-computing-group/Fourier-Discrepancies-CNN-Detection)
-        self.feature_scaling_layer = nn.Upsample(
-            scale_factor=2, mode='bilinear', align_corners=True
-        )
-        #  convolution
-        self.conv_after_scaling = get_conv_layer(
-            num_filters_out,
-            self.out_channels,
-            kernel_size=3,
-            stride=2,
-            padding=1,
-            bias=True,
-            dim=self.dim,
-        )
-
-        # # add a gaussian filter layer
-        # self.pad = nn.ReflectionPad2d(1)
-        # self.smoothing = GaussianSmoothing(3, 3, 0.2)
-
-        # final convolution
-        self.conv_final = get_conv_layer(
-            self.out_channels,
-            self.out_channels,
-            kernel_size=1,
-            stride=1,
-            padding=0,
-            bias=True,
-            dim=self.dim,
-        )
-
-        # optional sigmoid or tanh
-        self.sigmoid = nn.Sigmoid()
-        self.tanh = nn.Tanh()
-
-        # add the list of modules to current module
-        self.down_blocks = nn.ModuleList(self.down_blocks)
-        self.up_blocks = nn.ModuleList(self.up_blocks)
-
-        # initialize the weights
-        self.initialize_parameters()
-
-    @staticmethod
-    def weight_init(module, method, **kwargs):
-        if isinstance(
-            module, (nn.Conv3d, nn.Conv2d, nn.ConvTranspose3d, nn.ConvTranspose2d)
-        ):
-            method(module.weight, **kwargs)  # weights
-
-    @staticmethod
-    def bias_init(module, method, **kwargs):
-        if isinstance(
-            module, (nn.Conv3d, nn.Conv2d, nn.ConvTranspose3d, nn.ConvTranspose2d)
-        ):
-            method(module.bias, **kwargs)  # bias
-
-    def initialize_parameters(
-        self,
-        method_weights=nn.init.xavier_uniform_,
-        method_bias=nn.init.zeros_,
-        kwargs_weights={},
-        kwargs_bias={},
-    ):
-        for module in self.modules():
-            self.weight_init(
-                module, method_weights, **kwargs_weights
-            )  # initialize weights
-            self.bias_init(module, method_bias, **kwargs_bias)  # initialize bias
-
-    def forward(self, x: torch.tensor):
-        encoder_output = []
-
-        # Encoder pathway
-        for module in self.down_blocks:
-            x, before_pooling = module(x)
-            encoder_output.append(before_pooling)
-
-        # Decoder pathway
-        for i, module in enumerate(self.up_blocks):
-            before_pool = encoder_output[-(i + 2)]
-            x = module(before_pool, x)
-
-        x = self.feature_scaling_layer(x)
-        x = self.conv_after_scaling(x)
-        # x = self.pad(x)
-        # x = self.smoothing(x)
-        x = self.conv_final(x)
-        x = self.tanh(x)
         return x
-
-    def __repr__(self):
-        attributes = {
-            attr_key: self.__dict__[attr_key]
-            for attr_key in self.__dict__.keys()
-            if '_' not in attr_key[0] and 'training' not in attr_key
-        }
-        d = {self.__class__.__name__: attributes}
-        return f'{d}'
