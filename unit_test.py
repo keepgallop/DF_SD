@@ -2,7 +2,7 @@
 @Description  : module test code
 @Author       : Chi Liu
 @Date         : 2022-03-25 18:40:38
-@LastEditTime : 2022-03-27 02:08:54
+@LastEditTime : 2022-03-27 20:55:42
 '''
 import sys
 
@@ -20,12 +20,12 @@ else:
 #                             test dataset loader
 #
 ##############################################################################
-from transformations import Wavelet
+# from transformations import Wavelet
 
-wav = Wavelet()
-input_im = torch.rand((512, 512, 3))
-out = wav(input_im)
-print(out.shape)
+# wav = Wavelet()
+# input_im = torch.rand((512, 512, 3))
+# out = wav(input_im)
+# print(out.shape)
 ##############################################################################
 #
 #                             test loss functions
@@ -66,13 +66,13 @@ print(out.shape)
 #                              test attacker networks
 #
 ##############################################################################
-# from attacker_nets import AE, VAE, RDN, UNet
-# from torchsummary import summary
+from attacker_nets import AE, VAE, RDN, UNet
+from torchsummary import summary
 
-# input_im = torch.rand((10, 3, 512, 512)).to(device)
+input_im = torch.rand((10, 3, 128, 128)).to(device)
 
 # ae_net = AE().to(device)
-# vae_net = VAE(input_dim=3, dim=128).to(device)
+vae_net = VAE(input_dim=3, dim=100).to(device)
 # rdn_net = RDN(scale_factor=2,
 #               num_channels=3,
 #               num_features=64,
@@ -82,7 +82,7 @@ print(out.shape)
 # unet = UNet().to(device)
 
 # ae_out = ae_net(input_im)
-# vae_out = vae_net(input_im)
+vae_out = vae_net(input_im)
 # rdn_out = rdn_net(input_im)
 # unet_out = unet(input_im)
 

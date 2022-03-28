@@ -37,12 +37,12 @@ class RDB(nn.Module):
 class RDN(nn.Module):
 
     def __init__(self,
-                 scale_factor,
-                 num_channels,
-                 num_features,
-                 growth_rate,
-                 num_blocks,
-                 num_layers,
+                 scale_factor=2,
+                 num_channels=3,
+                 num_features=128,
+                 growth_rate=64,
+                 num_blocks=16,
+                 num_layers=8,
                  requires_grad=True):
         super(RDN, self).__init__()
         self.G0 = num_features
