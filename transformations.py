@@ -2,7 +2,7 @@
 @Description  : 
 @Author       : Chi Liu
 @Date         : 2022-01-14 17:20:38
-@LastEditTime : 2022-03-27 02:09:55
+@LastEditTime : 2022-03-28 22:32:35
 '''
 
 import random
@@ -20,7 +20,6 @@ import pywt
 class DataAugmentation(object):
     """Data augmentation strategies (aka. Defense strategies). All functions get PIL image input and return to PIL image.
     """
-
     def __init__(
         self,
         prob=0.2,
@@ -57,7 +56,6 @@ class DataAugmentation(object):
         return self.random_combine()(img)
 
     def random_combine(self):
-
         def compose(f, g):
             return lambda x: g(f(x))
 
@@ -160,7 +158,6 @@ class DataAugmentation(object):
 class DCT(object):
     """2D-DCT transformation. All functions get PIL image input and return to np.array.
     """
-
     def __init__(self, is_norm=True, is_log_scale=True):
         self.func_list = [self.dct2]
         if is_log_scale:
@@ -172,7 +169,6 @@ class DCT(object):
         return self.combine()(img).astype(np.float32)
 
     def combine(self):
-
         def compose(f, g):
             return lambda x: g(f(x))
 
@@ -201,7 +197,6 @@ class DCT(object):
 class Wavelet(object):
     """wavelet transformation. All functions get PIL image input and return to np.array.
     """
-
     def __init__(self, is_norm=False):
         self.is_norm = is_norm
 

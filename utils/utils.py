@@ -1,13 +1,20 @@
+'''
+@Description  : 
+@Author       : Chi Liu
+@Date         : 2022-03-28 11:40:22
+@LastEditTime : 2022-03-28 23:46:18
+'''
 import os
 import random
 
 import numpy as np
 import torch
 import torch.nn.init as init
+from torchvision.utils import make_grid, save_image
+import numpy as np
 
 
 def weights_init(net, init_type='normal', init_gain=0.02):
-
     def init_func(m):
         classname = m.__class__.__name__
         if hasattr(m, 'weight') and (classname.find('Conv') != -1
@@ -60,3 +67,25 @@ def set_random_seed(seed, deterministic=False):
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
+
+class AverageMeter(object):
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+
+def grid_save(ims, p):
+    grid = make_grid(ims)
+    save_image(grid, p)
