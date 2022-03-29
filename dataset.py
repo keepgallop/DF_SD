@@ -2,7 +2,7 @@
 @Description  : 
 @Author       : Chi Liu
 @Date         : 2022-02-19 15:28:59
-@LastEditTime : 2022-03-28 22:40:52
+@LastEditTime : 2022-03-30 00:02:55
 '''
 import pandas as pd
 from torch.utils.data import Dataset
@@ -49,12 +49,12 @@ class AttackDataset(Dataset):
             raw_image = raw_image.convert('YCbCr')
 
         if self.transform:
+            image = raw_image.copy()
             if isinstance(self.transform, list):
-                image = raw_image.copy()
                 for t in self.transform:
                     image = t(image)
             else:
-                image = self.transform(raw_image)
+                image = self.transform(image)
             return tt(image), tt(raw_image), img_name
         else:
             return tt(raw_image), img_name

@@ -1,97 +1,329 @@
-'''
-@Description  : Calculate visual similarity in terms of SSIM and PSNR
-@Author       : Chi Liu
-@Date         : 2022-03-02 16:20:59
-@LastEditTime : 2022-03-03 17:48:40
-'''
-import numpy as np
+#######################################################################################
+# Part of code from
+# https://github.com/open-mmlab/mmediting/blob/master/mmedit/core/evaluation/metrics.py
+#######################################################################################
+
 import cv2
-from skimage.metrics import structural_similarity as ssim
+import lpips as lpips_ori
+import numpy as np
+import torch
+import torchvision.transforms as transforms
+from pytorch_fid import fid_score
 
 
-def psnr_single(im1: np.ndarray, im2: np.ndarray) -> float:
-    assert im1.shape == im2.shape, "im1 and im2 should have the same shape"
-    assert im1.dtype == im2.dtype, "im1 and im2 should have the same dtype"
-    R = 255 if im1.dtype == int else 1
-    psnr_score = cv2.PSNR(im1, im2, R=R)
-    return psnr_score
+def reorder_image(img, input_order='HWC'):
+    """Reorder images to 'HWC' order.
 
-
-def ssim_single(im1: np.ndarray, im2: np.ndarray) -> float:
-    assert im1.shape == im2.shape, "im1 and im2 should have the same shape"
-    assert im1.dtype == im2.dtype, "im1 and im2 should have the same dtype"
-    data_range = 255 if im1.dtype == int else 1
-    # assert im2.dtype == float
-    if im1.ndim == 3 and im2.ndim == 3:  # RGB images
-        ssim_score = ssim(
-            im1, im2, multichannel=True, data_range=data_range, gaussian_weights=True
-        )
-    # gray images, recommended for higher ssim scores.
-    elif im1.ndim == 2 and im2.ndim == 2:
-        ssim_score = ssim(
-            im1, im2, multichannel=False, data_range=data_range, gaussian_weights=True
-        )
-    return ssim_score
-
-
-def psnr_batch(imb1: np.ndarray, imb2: np.ndarray):
-    """PSNR scores for an image batch
+    If the input_order is (h, w), return (h, w, 1);
+    If the input_order is (c, h, w), return (h, w, c);
+    If the input_order is (h, w, c), return as it is.
 
     Args:
-        imb1 (np.ndarray):  N*W*H*D
-        imb2 (np.ndarray):  N*W*H*D
+        img (ndarray): Input image.
+        input_order (str): Whether the input order is 'HWC' or 'CHW'.
+            If the input image shape is (h, w), input_order will not have
+            effects. Default: 'HWC'.
 
     Returns:
-        mean psnr score, psnr score list
+        ndarray: reordered image.
     """
-    psnr_scores = np.array([psnr_single(i[0], i[1]) for i in zip(imb1, imb2)])
-    return np.mean(psnr_scores), psnr_scores
+
+    if input_order not in ['HWC', 'CHW']:
+        raise ValueError(
+            f'Wrong input_order {input_order}. Supported input_orders are '
+            '"HWC" and "CHW"')
+    if len(img.shape) == 2:
+        img = img[..., None]
+        return img
+    if input_order == 'CHW':
+        img = img.transpose(1, 2, 0)
+    img = img.astype(np.float64)
+    return img
 
 
-def ssim_batch(imb1: np.ndarray, imb2: np.ndarray):
-    """SSIM scores for an image batch
+def psnr(img1, img2, crop_border=0, input_order='HWC'):
+    """Calculate PSNR (Peak Signal-to-Noise Ratio).
+
+    Ref: https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio
 
     Args:
-        imb1 (np.ndarray):  N*W*H*D
-        imb2 (np.ndarray):  N*W*H*D
+        img1 (ndarray): Images with range [0, 255].
+        img2 (ndarray): Images with range [0, 255].
+        crop_border (int): Cropped pixels in each edges of an image. These
+            pixels are not involved in the PSNR calculation. Default: 0.
+        input_order (str): Whether the input order is 'HWC' or 'CHW'.
+            Default: 'HWC'.
 
     Returns:
-        mean ssim score, ssim score list
+        float: psnr result.
     """
-    ssim_scores = np.array([ssim_single(i[0], i[1]) for i in zip(imb1, imb2)])
-    return np.mean(ssim_scores), ssim_scores
+
+    assert img1.shape == img2.shape, (
+        f'Image shapes are differnet: {img1.shape}, {img2.shape}.')
+    if input_order not in ['HWC', 'CHW']:
+        raise ValueError(
+            f'Wrong input_order {input_order}. Supported input_orders are '
+            '"HWC" and "CHW"')
+    img1 = reorder_image(img1, input_order=input_order)
+    img2 = reorder_image(img2, input_order=input_order)
+
+    if crop_border != 0:
+        img1 = img1[crop_border:-crop_border, crop_border:-crop_border, None]
+        img2 = img2[crop_border:-crop_border, crop_border:-crop_border, None]
+
+    mse = np.mean((img1 - img2)**2)
+    if mse == 0:
+        return float('inf')
+    return 20. * np.log10(255. / np.sqrt(mse))
 
 
-def print_similarity_results(imb1: np.ndarray, imb2: np.ndarray):
-    mean_psnr, _ = psnr_batch(imb1, imb2)
-    mean_ssim, _ = ssim_batch(imb1, imb2)
-    print(
-        f"Similarity results => mean PSNR: {mean_psnr:.4f};  mean SSIM: {mean_ssim:.4f}"
-    )
+def _ssim(img1, img2):
+    """Calculate SSIM (structural similarity) for one channel images.
+
+    It is called by func:`ssim`.
+
+    Args:
+        img1, img2 (ndarray): Images with range [0, 255] with order 'HWC'.
+
+    Returns:
+        float: ssim result.
+    """
+
+    C1 = (0.01 * 255)**2
+    C2 = (0.03 * 255)**2
+
+    img1 = img1.astype(np.float64)
+    img2 = img2.astype(np.float64)
+    kernel = cv2.getGaussianKernel(11, 1.5)
+    window = np.outer(kernel, kernel.transpose())
+
+    mu1 = cv2.filter2D(img1, -1, window)[5:-5, 5:-5]
+    mu2 = cv2.filter2D(img2, -1, window)[5:-5, 5:-5]
+    mu1_sq = mu1**2
+    mu2_sq = mu2**2
+    mu1_mu2 = mu1 * mu2
+    sigma1_sq = cv2.filter2D(img1**2, -1, window)[5:-5, 5:-5] - mu1_sq
+    sigma2_sq = cv2.filter2D(img2**2, -1, window)[5:-5, 5:-5] - mu2_sq
+    sigma12 = cv2.filter2D(img1 * img2, -1, window)[5:-5, 5:-5] - mu1_mu2
+
+    ssim_map = ((2 * mu1_mu2 + C1) *
+                (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) *
+                                       (sigma1_sq + sigma2_sq + C2))
+    return ssim_map.mean()
 
 
-if __name__ == "__main__":
-    # RGB test
-    rgb_test_im1 = np.random.randint(0, 255, (100, 128, 128, 3))
-    rgb_test_im2 = np.random.randint(0, 255, (100, 128, 128, 3))
+def ssim(img1, img2, crop_border=0, input_order='HWC'):
+    """Calculate SSIM (structural similarity).
 
-    print(rgb_test_im1.dtype)
-    rgb_test_im3 = rgb_test_im1 / 255.0
-    rgb_test_im4 = rgb_test_im2 / 255.0
-    print(rgb_test_im3.dtype)
-    print_similarity_results(rgb_test_im1, rgb_test_im2)
-    print_similarity_results(rgb_test_im3, rgb_test_im4)
+    Ref:
+    Image quality assessment: From error visibility to structural similarity
 
-    # gray test
-    gray_test_im1 = np.random.randint(0, 255, (100, 128, 128))
-    gray_test_im2 = np.random.randint(0, 255, (100, 128, 128))
+    The results are the same as that of the official released MATLAB code in
+    https://ece.uwaterloo.ca/~z70wang/research/ssim/.
 
-    gray_test_im3 = gray_test_im1 / 255.0
-    gray_test_im4 = gray_test_im2 / 255.0
+    For three-channel images, SSIM is calculated for each channel and then
+    averaged.
 
-    print_similarity_results(gray_test_im1, gray_test_im2)
-    print_similarity_results(gray_test_im3, gray_test_im4)
+    Args:
+        img1 (ndarray): Images with range [0, 255].
+        img2 (ndarray): Images with range [0, 255].
+        crop_border (int): Cropped pixels in each edges of an image. These
+            pixels are not involved in the SSIM calculation. Default: 0.
+        input_order (str): Whether the input order is 'HWC' or 'CHW'.
+            Default: 'HWC'.
 
-    t1 = np.random.randint(0, 255, (128, 128, 3)) / 1.0
-    t2 = np.random.randint(0, 255, (128, 128, 3)) / 1.0
-    print(psnr_single(t1, t2))
+    Returns:
+        float: ssim result.
+    """
+
+    assert img1.shape == img2.shape, (
+        f'Image shapes are differnet: {img1.shape}, {img2.shape}.')
+    if input_order not in ['HWC', 'CHW']:
+        raise ValueError(
+            f'Wrong input_order {input_order}. Supported input_orders are '
+            '"HWC" and "CHW"')
+    img1 = reorder_image(img1, input_order=input_order)
+    img2 = reorder_image(img2, input_order=input_order)
+
+    if crop_border != 0:
+        img1 = img1[crop_border:-crop_border, crop_border:-crop_border, None]
+        img2 = img2[crop_border:-crop_border, crop_border:-crop_border, None]
+
+    ssims = []
+    for i in range(img1.shape[2]):
+        ssims.append(_ssim(img1[..., i], img2[..., i]))
+    return np.array(ssims).mean()
+
+
+# predefine transforms and network for LPIPS calculation
+transform = None
+loss_fn_alex = None
+device = None
+
+
+def lpips(img1, img2, crop_border=0, input_order='HWC', channel_order='BGR'):
+    """Calculate LPIPS (Learned Perceptual Image Patch Similarity).
+
+    Ref:
+    The Unreasonable Effectiveness of Deep Features as a Perceptual Metric.
+    In CVPR 2018. <https://arxiv.org/pdf/1801.03924.pdf>
+
+    Args:
+        img1 (ndarray): Images with range [0, 255].
+        img2 (ndarray): Images with range [0, 255].
+        crop_border (int): Cropped pixels in each edges of an image. These
+            pixels are not involved in the LPIPS calculation. Default: 0.
+        input_order (str): Whether the input order is 'HWC' or 'CHW'.
+            Default: 'HWC'.
+        channel_order (str): Whether the channel order is 'BGR' or 'RGB'.
+            Default: 'BGR'.
+
+    Returns:
+        float: lpips result.
+    """
+    def init():
+        global transform, loss_fn_alex, device
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        loss_fn_alex = lpips_ori.LPIPS(net='alex')
+        if torch.cuda.is_available():
+            loss_fn_alex.cuda()
+        device = next(loss_fn_alex.parameters()).device
+
+    # initialize the predefined transforms and network at the first call
+    if transform is None or loss_fn_alex is None or device is None:
+        init()
+
+    assert img1.shape == img2.shape, (
+        f'Image shapes are differnet: {img1.shape}, {img2.shape}.')
+    if input_order not in ['HWC', 'CHW']:
+        raise ValueError(
+            f'Wrong input_order {input_order}. Supported input_orders are '
+            '"HWC" and "CHW"')
+    img1 = reorder_image(img1, input_order=input_order)
+    img2 = reorder_image(img2, input_order=input_order)
+    if channel_order not in ['BGR', 'RGB']:
+        raise ValueError(
+            f'Wrong channel_order {channel_order}. Supported channel_orders are '
+            '"BGR" and "RGB"')
+    # input image should be adjusted to RGB for LPIPS calculation
+    if channel_order == 'BGR':
+        img1, img2 = img1[:, :, ::-1].copy(), img2[:, :, ::-1].copy()
+
+    if crop_border != 0:
+        img1 = img1[crop_border:-crop_border, crop_border:-crop_border, None]
+        img2 = img2[crop_border:-crop_border, crop_border:-crop_border, None]
+
+    tensor1 = transform(img1.astype(np.uint8)).unsqueeze(0).to(device)
+    tensor2 = transform(img2.astype(np.uint8)).unsqueeze(0).to(device)
+    return loss_fn_alex(tensor1, tensor2).item()
+
+
+def fid(paths, batch_size=50, device=None, dims=2048):
+    """Calculate FID (Fréchet Inception Distance).
+
+    Ref:
+    GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash
+    Equilibrium. In NeurIPS 2017. <https://arxiv.org/pdf/1706.08500.pdf>
+
+    Args:
+        paths (list of two str): Two paths to the real and generated images.
+        batch_size (int): Batch size. A reasonable batch size depends on the
+            hardware. Default: 50.
+        device (str): Device to use, like 'cuda', 'cuda:0' or 'cpu'.
+            Default: None (if set to None, it depends the availability).
+        dims (int): Dimensionality of Inception features. Default: 2048.
+
+    Returns:
+        float: fid result.
+    """
+
+    assert len(paths) == 2, ('Two valid image paths should be given, '
+                             f'but got {len(paths)} paths')
+
+    if device is None:
+        device = torch.device('cuda' if (torch.cuda.is_available()) else 'cpu')
+    else:
+        device = torch.device(device)
+
+    return fid_score.calculate_fid_given_paths(paths=paths,
+                                               batch_size=batch_size,
+                                               device=device,
+                                               dims=dims)
+
+
+def lfd(img1, img2, crop_border=0, input_order='HWC'):
+    """Calculate LFD (Log Frequency Distance).
+
+    Ref:
+    Focal Frequency Loss for Image Reconstruction and Synthesis. In ICCV 2021.
+    <https://arxiv.org/pdf/2012.12821.pdf>
+
+    Args:
+        img1 (ndarray): Images with range [0, 255].
+        img2 (ndarray): Images with range [0, 255].
+        crop_border (int): Cropped pixels in each edges of an image. These
+            pixels are not involved in the LFD calculation. Default: 0.
+        input_order (str): Whether the input order is 'HWC' or 'CHW'.
+            Default: 'HWC'.
+
+    Returns:
+        float: lfd result.
+    """
+
+    assert img1.shape == img2.shape, (
+        f'Image shapes are differnet: {img1.shape}, {img2.shape}.')
+    if input_order not in ['HWC', 'CHW']:
+        raise ValueError(
+            f'Wrong input_order {input_order}. Supported input_orders are '
+            '"HWC" and "CHW"')
+    img1 = reorder_image(img1, input_order=input_order)
+    img2 = reorder_image(img2, input_order=input_order)
+
+    if crop_border != 0:
+        img1 = img1[crop_border:-crop_border, crop_border:-crop_border, None]
+        img2 = img2[crop_border:-crop_border, crop_border:-crop_border, None]
+
+    img1 = img1.transpose(2, 0, 1)
+    img2 = img2.transpose(2, 0, 1)
+    freq1 = np.fft.fft2(img1)
+    freq2 = np.fft.fft2(img2)
+    return np.log(
+        np.mean((freq1.real - freq2.real)**2 + (freq1.imag - freq2.imag)**2) +
+        1.0)
+
+
+def mse(img1, img2, crop_border=0, input_order='HWC'):
+    """Calculate MSE (Mean Squared Error).
+
+    Ref: https://en.wikipedia.org/wiki/Mean_squared_error
+
+    Args:
+        img1 (ndarray): Images with range [0, 255].
+        img2 (ndarray): Images with range [0, 255].
+        crop_border (int): Cropped pixels in each edges of an image. These
+            pixels are not involved in the MSE calculation. Default: 0.
+        input_order (str): Whether the input order is 'HWC' or 'CHW'.
+            Default: 'HWC'.
+
+    Returns:
+        float: mse result.
+    """
+
+    assert img1.shape == img2.shape, (
+        f'Image shapes are differnet: {img1.shape}, {img2.shape}.')
+    if input_order not in ['HWC', 'CHW']:
+        raise ValueError(
+            f'Wrong input_order {input_order}. Supported input_orders are '
+            '"HWC" and "CHW"')
+    img1 = reorder_image(img1, input_order=input_order)
+    img2 = reorder_image(img2, input_order=input_order)
+
+    if crop_border != 0:
+        img1 = img1[crop_border:-crop_border, crop_border:-crop_border, None]
+        img2 = img2[crop_border:-crop_border, crop_border:-crop_border, None]
+
+    return np.mean((img1 - img2)**2)
+

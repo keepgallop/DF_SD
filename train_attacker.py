@@ -9,7 +9,7 @@ import torch.backends.cudnn as cudnn
 
 from tqdm import tqdm
 
-from utils.utils import set_random_seed, AverageMeter, grid_save, calc_psnr, convert_rgb_to_y, denormalize
+from utils.utils import set_random_seed, AverageMeter, grid_save, print_and_write_log, tensor2im
 
 from torch.utils.data.dataloader import DataLoader
 from dataset import AttackDataset
@@ -18,40 +18,25 @@ from transformations import Wavelet, DataAugmentation
 from torchsummary import summary
 from loss import spatial_loss, spectral_loss
 import functools
+from metrics import psnr, ssim, lfd
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-csv-file', type=str, required=True)
     parser.add_argument('--batch-size', type=int, default=128)
     parser.add_argument('--num-workers', type=int, default=8)
-
-    # parser.add_argument('--eval-file', type=str, required=True)
-
     parser.add_argument('--weights-file', type=str)
-    # parser.add_argument('--num-features', type=int, default=64)
-    # parser.add_argument('--growth-rate', type=int, default=64)
-    # parser.add_argument('--num-blocks', type=int, default=16)
-    # parser.add_argument('--num-layers', type=int, default=8)
-    # parser.add_argument('--scale', type=int, default=4)
-    # parser.add_argument('--patch-size', type=int, default=32)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--lr-decay', type=float, default=0.5)
     parser.add_argument('--lr-decay-epoch', type=int, default=10)
-
     parser.add_argument('--num-epochs', type=int, default=100)
     parser.add_argument('--num-save', type=int, default=10)
-    parser.add_argument('--sample-interval', type=int, default=200)
-
+    parser.add_argument('--sample-interval', type=int, default=50)
     parser.add_argument(
         '--augment',
         action='store_true',
         help='whether applying data augmentation in training an attacker model'
     )
-    # parser.add_argument('--completion', action='store_true', help='completion')
-    # parser.add_argument('--colorization',
-    #                     action='store_true',
-    #                     help='colorization')
-
     parser.add_argument('--outputs-dir', type=str, required=True)
     parser.add_argument('--gpu-id', type=int, default=0)
     parser.add_argument('--im_size', type=int, default=128)
@@ -70,12 +55,14 @@ if __name__ == '__main__':
                         default=1)  # weight for frequency regularization loss
     parser.add_argument('--att_net', type=str, default='unet')
     parser.add_argument('--seed', type=int, default=123)
+    parser.add_argument('--train-length', type=int, default=0)
+    parser.add_argument('--valid-length', type=int, default=0)
 
     args = parser.parse_args()
 
     args.outputs_dir = os.path.join(
         args.outputs_dir,
-        f'x{args.im_size}-{args.spa_loss}-{args.fre_loss}-{int(args.regularization)}'
+        f'x{args.im_size}-{args.att_net}-{args.spa_loss}-{args.fre_loss}-lambda1-{args.lambda1}-reg-{int(args.reg)}'
     )
 
     if not os.path.exists(args.outputs_dir):
@@ -90,8 +77,7 @@ if __name__ == '__main__':
     if args.att_net == 'unet':
         model = UNet().to(device)
     elif args.att_net == 'rdn':
-        num_features = 128 if args.im_size == 128 else 256
-        model = RDN(num_features=num_features).to(device)
+        model = RDN().to(device)
     elif args.att_net == 'ae':
         model = AE().to(device)
     elif args.att_net == 'vae':
@@ -100,7 +86,7 @@ if __name__ == '__main__':
     else:
         raise TypeError('attacker network not supported!')
 
-    print(summary(model))
+    # print(summary(model))
 
     if args.weights_file is not None:
         state_dict = model.state_dict()
@@ -116,26 +102,36 @@ if __name__ == '__main__':
     fre_crit = functools.partial(spectral_loss,
                                  loss_type=args.fre_loss,
                                  is_reg=args.reg,
-                                 alpha=args.lambda2)
+                                 alpha=args.lambda2,
+                                 im_size=args.im_size)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     if args.augment:
-        train_trans = [DataAugmentation(), Wavelet(is_norm=True)]
+        train_trans = [
+            DataAugmentation(prob=0.2,
+                             is_blur=True,
+                             is_jpeg=True,
+                             is_noise=True,
+                             is_jitter=True,
+                             is_geo=False,
+                             is_crop=False,
+                             is_rot=False,
+                             is_high=False),
+            Wavelet(is_norm=True)
+        ]
     else:
         train_trans = Wavelet(is_norm=True)
     valid_trans = Wavelet(is_norm=True)
-    train_dataset = AttackDataset(
-        args.data_csv_file,
-        transform=train_trans,
-        allocation='train',
-    )
+    train_dataset = AttackDataset(args.data_csv_file,
+                                  transform=train_trans,
+                                  allocation='train',
+                                  length=args.train_length)
 
-    valid_dataset = AttackDataset(
-        args.data_csv_file,
-        transform=valid_trans,
-        allocation='valid',
-    )
+    valid_dataset = AttackDataset(args.data_csv_file,
+                                  transform=valid_trans,
+                                  allocation='valid',
+                                  length=args.valid_length)
 
     train_dataloader = DataLoader(
         dataset=train_dataset,
@@ -145,7 +141,7 @@ if __name__ == '__main__':
     )
     valid_dataloader = DataLoader(
         dataset=valid_dataset,
-        batch_size=args.batch_size,
+        batch_size=1,
         shuffle=False,
         num_workers=args.num_workers,
     )
@@ -153,9 +149,6 @@ if __name__ == '__main__':
     best_weights = copy.deepcopy(model.state_dict())
     best_epoch = 0
     sample_step = 0
-    #todo metrics define  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-    best_psnr = 0.0
 
     for epoch in range(args.num_epochs):
         for param_group in optimizer.param_groups:
@@ -181,8 +174,8 @@ if __name__ == '__main__':
                 out_ims = model(ds_ims)
                 #import ipdb; ipdb.set_trace()
 
-                s_loss = spa_crit(out_ims, raw_ims) if not spa_crit else 0
-                f_loss = fre_crit(out_ims, raw_ims) if not fre_crit else 0
+                s_loss = spa_crit(out_ims, raw_ims)  #if not spa_crit else 0
+                f_loss = fre_crit(out_ims, raw_ims)  #if not fre_crit else 0
 
                 loss = s_loss + f_loss * args.lambda1
 
@@ -199,50 +192,38 @@ if __name__ == '__main__':
 
                 if sample_step % args.sample_interval == 0:
                     grid_save(
-                        raw_ims,
-                        os.path.join(
-                            args.outputs_dir,
-                            f'step_{sample_step}-epoch_{epoch}-raw.png'))
-                    grid_save(
-                        out_ims,
-                        os.path.join(
-                            args.outputs_dir,
-                            f'step_{sample_step}-epoch_{epoch}-out.png'))
+                        torch.cat([raw_ims, out_ims], 2),
+                        os.path.join(args.outputs_dir,
+                                     f'step_{sample_step}-epoch_{epoch}.png'))
+        train_mss = f'epoch {epoch}: loss: {epoch_losses.avg:.3f};'
+        print_and_write_log(train_mss,
+                            os.path.join(args.outputs_dir, 'logs.txt'))
 
         if (epoch + 1) % args.num_save == 0:
             torch.save(
                 model.state_dict(),
                 os.path.join(args.outputs_dir, 'epoch_{}.pth'.format(epoch)))
 
-        #todo %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         model.eval()
         epoch_psnr = AverageMeter()
+        epoch_ssim = AverageMeter()
+        epoch_lfd = AverageMeter()
 
-        for data in eval_dataloader:
-            inputs, labels = data
+        for data in valid_dataloader:
+            ds_im, raw_im, _ = data  # note: batch size = 1
 
-            inputs = inputs.to(device)
-            labels = labels.to(device)
+            ds_im = ds_im.to(device)
+            raw_im = raw_im.to(device)
 
             with torch.no_grad():
-                preds = model(inputs)
+                out_im = model(ds_im)
+            out_im = tensor2im(out_im[0])
+            raw_im = tensor2im(raw_im[0])
 
-            preds = convert_rgb_to_y(denormalize(preds.squeeze(0)),
-                                     dim_order='chw')
-            labels = convert_rgb_to_y(denormalize(labels.squeeze(0)),
-                                      dim_order='chw')
+            epoch_psnr.update(psnr(out_im, raw_im), n=1)
+            epoch_ssim.update(ssim(out_im, raw_im), n=1)
+            epoch_lfd.update(lfd(out_im, raw_im), n=1)
 
-            preds = preds[args.scale:-args.scale, args.scale:-args.scale]
-            labels = labels[args.scale:-args.scale, args.scale:-args.scale]
-
-            epoch_psnr.update(calc_psnr(preds, labels), len(inputs))
-
-        print('eval psnr: {:.2f}'.format(epoch_psnr.avg))
-
-        if epoch_psnr.avg > best_psnr:
-            best_epoch = epoch
-            best_psnr = epoch_psnr.avg
-            best_weights = copy.deepcopy(model.state_dict())
-
-    #print('best epoch: {}, psnr: {:.2f}'.format(best_epoch, best_psnr))
-    #torch.save(best_weights, os.path.join(args.outputs_dir, 'best.pth'))
+        valid_mss = f'epoch {epoch}: eval psnr: {epoch_psnr.avg:.3f}; eval ssim: {epoch_ssim.avg:.3f}; eval lfd: {epoch_lfd.avg:.3f};'
+        print_and_write_log(valid_mss,
+                            os.path.join(args.outputs_dir, 'logs.txt'))

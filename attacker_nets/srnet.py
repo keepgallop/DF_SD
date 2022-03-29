@@ -3,7 +3,6 @@ from torch import nn
 
 
 class DenseLayer(nn.Module):
-
     def __init__(self, in_channels, out_channels):
         super(DenseLayer, self).__init__()
         self.conv = nn.Conv2d(in_channels,
@@ -17,7 +16,6 @@ class DenseLayer(nn.Module):
 
 
 class RDB(nn.Module):
-
     def __init__(self, in_channels, growth_rate, num_layers):
         super(RDB, self).__init__()
         self.layers = nn.Sequential(*[
@@ -35,11 +33,10 @@ class RDB(nn.Module):
 
 
 class RDN(nn.Module):
-
     def __init__(self,
                  scale_factor=2,
                  num_channels=3,
-                 num_features=128,
+                 num_features=64,
                  growth_rate=64,
                  num_blocks=16,
                  num_layers=8,

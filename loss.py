@@ -2,7 +2,7 @@
 @Description  : losses
 @Author       : Chi Liu
 @Date         : 2022-02-21 23:15:44
-@LastEditTime : 2022-03-28 12:12:55
+@LastEditTime : 2022-03-29 21:26:39
 '''
 import torch
 import torch.nn as nn
@@ -37,7 +37,7 @@ def spatial_loss(pred, target, loss_type):
                                   channel=3,
                                   nonnegative_ssim=True)
         elif loss_type == "perceptual":
-            criterion = lpips.LPIPS(net='vgg').to(device)
+            criterion = lpips.LPIPS(net='vgg', verbose=False).to(device)
 
         if loss_type != "perceptual":
             err = criterion(pred, target)
@@ -47,7 +47,7 @@ def spatial_loss(pred, target, loss_type):
         return err
 
 
-def spectral_loss(pred, target, loss_type, is_reg, alpha):
+def spectral_loss(pred, target, loss_type, is_reg, alpha, im_size):
     assert loss_type in ["fft", "focal_fft", "dct", "psd",
                          "none"], "unknown loss type"
     if loss_type == "none":
@@ -64,10 +64,10 @@ def spectral_loss(pred, target, loss_type, is_reg, alpha):
         elif loss_type == "dct":
             criterion = FFL(loss_weight=1.0, alpha=0.0, fre_mode='dct')
         elif loss_type == "psd":
-            criterion = PSD()
+            criterion = PSD(cols=im_size, rows=im_size)
 
         if is_reg:
-            reg = PSD()
+            reg = PSD(cols=im_size, rows=im_size)
             err = criterion(pred, target) + alpha * reg(pred, target)
         else:
             err = criterion(pred, target)

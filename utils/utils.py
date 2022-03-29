@@ -2,7 +2,7 @@
 @Description  : 
 @Author       : Chi Liu
 @Date         : 2022-03-28 11:40:22
-@LastEditTime : 2022-03-28 23:46:18
+@LastEditTime : 2022-03-29 18:21:22
 '''
 import os
 import random
@@ -89,3 +89,42 @@ class AverageMeter(object):
 def grid_save(ims, p):
     grid = make_grid(ims)
     save_image(grid, p)
+
+
+def denormalize(img):
+    img = img.mul(255.0).clamp(0.0, 255.0)
+    return img
+
+
+def tensor2im(input_image, imtype=np.uint8):
+    """"Converts a Tensor array into a numpy image array.
+    Args:
+        input_image (torch.tensor): the input tensor array.
+        imtype (type): the desired type of the converted numpy image array.
+    """
+    if not isinstance(input_image, np.ndarray):
+        if isinstance(input_image, torch.Tensor):
+            image_tensor = input_image.detach()
+        else:
+            return input_image
+        image_tensor = denormalize(image_tensor)
+        image_numpy = image_tensor[0].cpu().float().numpy()
+        if image_numpy.shape[0] == 1:
+            # grayscale to RGB
+            image_numpy = np.tile(image_numpy, (3, 1, 1))
+    else:
+        image_numpy = input_image
+    return image_numpy.astype(imtype)
+
+
+def print_and_write_log(message, log_file=None):
+    """Print message and write to a log file.
+
+    Args:
+        message (str): The message to print out and log.
+        log_file (str, optional): Path to the log file. Default: None.
+    """
+    print(message)
+    if log_file is not None:
+        with open(log_file, 'a+') as f:
+            f.write('%s\n' % message)
