@@ -6,7 +6,7 @@ import torch
 from torch import nn
 import torch.optim as optim
 import torch.backends.cudnn as cudnn
-
+import random
 from tqdm import tqdm
 
 from utils.utils import set_random_seed, AverageMeter, grid_save, print_and_write_log, tensor2im
@@ -43,7 +43,7 @@ if __name__ == '__main__':
     parser.add_argument('--spa_loss',
                         type=str,
                         default='l2',
-                        choices=["l2", "ssim", "perceptual", "none"])
+                        choices=["l2", "ssim", "perceptual", "mix", "none"])
     parser.add_argument('--fre_loss',
                         type=str,
                         default='fft',
@@ -62,7 +62,7 @@ if __name__ == '__main__':
 
     args.outputs_dir = os.path.join(
         args.outputs_dir,
-        f'x{args.im_size}-{args.att_net}-{args.spa_loss}-{args.fre_loss}-lambda1-{args.lambda1}-reg-{int(args.reg)}'
+        f'x{args.im_size}-{args.att_net}-{args.spa_loss}-{args.fre_loss}-lambda1-{args.lambda1}-reg-{int(args.reg)}-aug-{args.augment}'
     )
 
     if not os.path.exists(args.outputs_dir):
@@ -113,7 +113,7 @@ if __name__ == '__main__':
                              is_blur=True,
                              is_jpeg=True,
                              is_noise=True,
-                             is_jitter=True,
+                             is_jitter=False,
                              is_geo=False,
                              is_crop=False,
                              is_rot=False,
@@ -174,8 +174,8 @@ if __name__ == '__main__':
                 out_ims = model(ds_ims)
                 #import ipdb; ipdb.set_trace()
 
-                s_loss = spa_crit(out_ims, raw_ims)  #if not spa_crit else 0
-                f_loss = fre_crit(out_ims, raw_ims)  #if not fre_crit else 0
+                s_loss = spa_crit(out_ims, raw_ims)
+                f_loss = fre_crit(out_ims, raw_ims)
 
                 loss = s_loss + f_loss * args.lambda1
 
@@ -208,7 +208,8 @@ if __name__ == '__main__':
         epoch_psnr = AverageMeter()
         epoch_ssim = AverageMeter()
         epoch_lfd = AverageMeter()
-
+        raw_ims = []
+        out_ims = []
         for data in valid_dataloader:
             ds_im, raw_im, _ = data  # note: batch size = 1
 
@@ -217,13 +218,23 @@ if __name__ == '__main__':
 
             with torch.no_grad():
                 out_im = model(ds_im)
+            raw_ims.append(raw_im)
+            out_ims.append(out_im)
+
             out_im = tensor2im(out_im[0])
             raw_im = tensor2im(raw_im[0])
-
             epoch_psnr.update(psnr(out_im, raw_im), n=1)
             epoch_ssim.update(ssim(out_im, raw_im), n=1)
             epoch_lfd.update(lfd(out_im, raw_im), n=1)
-
+        ran_inx = random.sample([i for i in range(len(raw_ims))], 30)
+        raw_ims = [raw_ims[i]
+                   for i in ran_inx]  # sample 100 images for visualization
+        out_ims = [out_ims[i] for i in ran_inx]
+        raw_ims = torch.cat(raw_ims, 3)  # cat in cols
+        out_ims = torch.cat(out_ims, 3)  # cat in cols
+        grid_save(torch.cat([raw_ims, out_ims], 2),
+                  os.path.join(args.outputs_dir, f'epoch_{epoch}-valid.png'))
         valid_mss = f'epoch {epoch}: eval psnr: {epoch_psnr.avg:.3f}; eval ssim: {epoch_ssim.avg:.3f}; eval lfd: {epoch_lfd.avg:.3f};'
         print_and_write_log(valid_mss,
                             os.path.join(args.outputs_dir, 'logs.txt'))
+torch.cuda.empty_cache()

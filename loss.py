@@ -2,7 +2,7 @@
 @Description  : losses
 @Author       : Chi Liu
 @Date         : 2022-02-21 23:15:44
-@LastEditTime : 2022-03-29 21:26:39
+@LastEditTime : 2022-04-01 17:04:47
 '''
 import torch
 import torch.nn as nn
@@ -24,7 +24,7 @@ class SSIM_Loss(SSIM):
 
 
 def spatial_loss(pred, target, loss_type):
-    assert loss_type in ["l2", "ssim", "perceptual",
+    assert loss_type in ["l2", "ssim", "perceptual", "mix",
                          "none"], "unknown loss type"
     if loss_type == "none":
         pass
@@ -38,11 +38,19 @@ def spatial_loss(pred, target, loss_type):
                                   nonnegative_ssim=True)
         elif loss_type == "perceptual":
             criterion = lpips.LPIPS(net='vgg', verbose=False).to(device)
+        elif loss_type == 'mix':
+            criterion1 = SSIM_Loss(data_range=1.0,
+                                   size_average=True,
+                                   channel=3,
+                                   nonnegative_ssim=True)
+            criterion2 = lpips.LPIPS(net='vgg', verbose=False).to(device)
 
-        if loss_type != "perceptual":
+        if loss_type in ['ssim', 'l2']:
             err = criterion(pred, target)
-        else:
+        elif loss_type == 'perceptual':
             err = criterion(pred, target).mean()
+        elif loss_type == 'mix':
+            err = criterion1(pred, target) + criterion2(pred, target).mean()
 
         return err
 
