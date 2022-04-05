@@ -5,7 +5,8 @@ do
     do
         for net in 'rdn' 'vae'
         do
-            for spaloss in 'ssim' 'l2' 'perceptual' 'mix'
+            # for spaloss in 'ssim' 'l2' 'perceptual' 'mix'
+            for spaloss in 'perceptual'
             do 
                 if [ $lambda2 -eq 0 ];then 
                     echo 'lambda1 = ' $lambda1 ', no reg'
