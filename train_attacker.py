@@ -1,6 +1,7 @@
 import argparse
 import os
 import copy
+from xmlrpc.client import boolean
 
 import torch
 from torch import nn
@@ -19,6 +20,7 @@ from torchsummary import summary
 from loss import spatial_loss, spectral_loss
 import functools
 from metrics import psnr, ssim, lfd
+import distutils.util
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -32,23 +34,31 @@ if __name__ == '__main__':
     parser.add_argument('--num-epochs', type=int, default=100)
     parser.add_argument('--num-save', type=int, default=10)
     parser.add_argument('--sample-interval', type=int, default=50)
+
     parser.add_argument(
-        '--augment',
-        action='store_true',
+        '--aug',
+        type=distutils.util.strtobool,
+        default='true',
         help='whether applying data augmentation in training an attacker model'
     )
+
     parser.add_argument('--outputs-dir', type=str, required=True)
     parser.add_argument('--gpu-id', type=int, default=0)
     parser.add_argument('--im_size', type=int, default=128)
-    parser.add_argument('--spa_loss',
-                        type=str,
-                        default='l2',
-                        choices=["l2", "ssim", "perceptual", "mix", "none"])
+    parser.add_argument(
+        '--spa_loss',
+        type=str,
+        default='l2',
+        choices=["l2", "l1", "ssim", "perceptual", "mix", "none"])
     parser.add_argument('--fre_loss',
                         type=str,
                         default='fft',
                         choices=["fft", "focal_fft", "dct", "psd", "none"])
-    parser.add_argument('--reg', action='store_true')
+    parser.add_argument(
+        '--reg',
+        type=distutils.util.strtobool,
+        default='true',
+    )
     parser.add_argument('--lambda1', type=float,
                         default=1)  # weight for frequency loss
     parser.add_argument('--lambda2', type=float,
@@ -59,14 +69,14 @@ if __name__ == '__main__':
     parser.add_argument('--valid-length', type=int, default=0)
 
     args = parser.parse_args()
-
     args.outputs_dir = os.path.join(
         args.outputs_dir,
-        f'x{args.im_size}-{args.att_net}-{args.spa_loss}-{args.fre_loss}-lambda1-{args.lambda1}-reg-{int(args.reg)}-aug-{args.augment}'
+        f'x{args.im_size}-{args.att_net}-{args.spa_loss}-{args.fre_loss}-lambda1-{args.lambda1}-lambda2-{args.lambda2}-reg-{int(args.reg)}-aug-{int(args.aug)}'
     )
 
     if not os.path.exists(args.outputs_dir):
         os.makedirs(args.outputs_dir)
+    print(args.outputs_dir)
 
     cudnn.benchmark = True
     device = torch.device('cuda:%d' %
@@ -77,7 +87,7 @@ if __name__ == '__main__':
     if args.att_net == 'unet':
         model = UNet().to(device)
     elif args.att_net == 'rdn':
-        model = RDN().to(device)
+        model = RDN(nDenselayer=5, nFeat=128).to(device)
     elif args.att_net == 'ae':
         model = AE().to(device)
     elif args.att_net == 'vae':
@@ -107,7 +117,7 @@ if __name__ == '__main__':
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    if args.augment:
+    if args.aug:
         train_trans = [
             DataAugmentation(prob=0.2,
                              is_blur=True,

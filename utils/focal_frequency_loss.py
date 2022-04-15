@@ -114,7 +114,7 @@ class FocalFrequencyLoss(nn.Module):
             # frequency distance using (squared) Euclidean distance
             tmp = (recon_freq - real_freq)**2
             freq_distance = tmp[..., 0] + tmp[..., 1]
-
+    
             # dynamic spectrum weighting (Hadamard product)
             loss = weight_matrix * freq_distance
             return torch.mean(loss)
