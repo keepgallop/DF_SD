@@ -20,6 +20,22 @@ import numpy as np
 from metrics import psnr, ssim, lfd
 import pandas as pd
 
+
+def ana_results(results):
+    mss = ''
+    for fake_class in ['real', 'progan', 'mmdgan', 'stgan', 'stargan', 'crgan', 'sngan']:
+        correct = 0
+        total = 0
+        for i in range(len(results)):
+            if fake_class in att_results['name'][i]:
+                # print(att_results['gt'][i])
+                total += 1
+                if results['gt'][i] == results['pred'][i]:
+                    correct += 1
+        mss += f'{fake_class} images: eval acc: {(correct / total):.5f};\n'
+    return mss
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-csv-file', type=str, required=True)
@@ -31,9 +47,8 @@ if __name__ == '__main__':
     parser.add_argument('--detector-ckpt', type=str)
     parser.add_argument('--det_net', type=str, default='xception')
     parser.add_argument('--att_net', type=str, default='rdn')
-
+    parser.add_argument('--allocation', type=str, default='test')
     parser.add_argument('--feature-space', type=str, default='rgb')
-    parser.add_argument('--fake-class', type=str, default='all')
     parser.add_argument('--gpu-id', type=int, default=0)
     parser.add_argument('--im_size', type=int, default=128)
     parser.add_argument(
@@ -44,31 +59,34 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    args.outputs_dir = os.path.join(
+    det_nat_name = args.detector_ckpt.split('/')[-2].split('-')[-2]
+    result_outputs_dir = os.path.join(
         args.outputs_dir,
-        f'x{args.im_size}-{args.det_net}-{args.att_net}-{args.feature_space}'
+        f'x{args.im_size}-{args.det_net}-{det_nat_name}-{args.att_net}-{args.feature_space}'
     )
 
-    if not os.path.exists(args.outputs_dir):
-        os.makedirs(args.outputs_dir)
-    print(args.outputs_dir)
+    if not os.path.exists(result_outputs_dir):
+        os.makedirs(result_outputs_dir)
+    print(result_outputs_dir)
 
     cudnn.benchmark = True
     device = torch.device('cuda:%d' %
                           args.gpu_id if torch.cuda.is_available() else 'cpu')
 
     #### attack process ####
-    before_save_path = os.path.join(args.outputs_dir, 'before')  # save raw images
-    after_save_path = os.path.join(args.outputs_dir, 'after')  # save attack samples
+    attsample_path = os.path.join(args.outputs_dir, args.att_net)
+    before_save_path = os.path.join(attsample_path, 'before')  # save raw images
+    after_save_path = os.path.join(attsample_path, 'after')  # save attack samples
 
     if args.new_attack:
         ####  load test data ####
+
         test_att_trans = Wavelet(is_norm=True)
 
         test_att_dataset = AttackDataset(args.data_csv_file,
                                          transform=test_att_trans,
-                                         allocation='test',
-                                         length=100)
+                                         allocation=args.allocation,
+                                         length=0)
 
         test_att_dataloader = DataLoader(dataset=test_att_dataset,
                                          batch_size=args.batch_size,
@@ -115,10 +133,10 @@ if __name__ == '__main__':
                         epoch_psnr.update(psnr(i, j), n=1)
                         epoch_ssim.update(ssim(i, j), n=1)
                         epoch_lfd.update(lfd(i, j), n=1)
-
+                    t.update(len(ds_im))
             test_mss = f'eval psnr: {epoch_psnr.avg:.3f}; eval ssim: {epoch_ssim.avg:.3f}; eval lfd: {epoch_lfd.avg:.3f};'
             print_and_write_log(test_mss,
-                                os.path.join(args.outputs_dir, 'att_logs.txt'))
+                                os.path.join(result_outputs_dir, 'att_logs.txt'))
         torch.cuda.empty_cache()
         print("========> Creation over.")
     else:
@@ -152,6 +170,7 @@ if __name__ == '__main__':
         correct = 0
         total = 0
         raw_results = {'name': [],
+                       'ori': [],
                        'gt': [],
                        'pred': []}
         with tqdm(desc='Raw sample detection phase =>',
@@ -167,21 +186,23 @@ if __name__ == '__main__':
                 total += gt_labels.size(0)
                 correct += (predicted == gt_labels).sum().item()
 
-                for i, j, k in zip(im_names, gt_labels, predicted):
+                for i, j, k, l in zip(im_names, gt_labels.cpu().numpy(), predicted.cpu().numpy(),  pred_labels.cpu().numpy()):
                     raw_results['name'].append(i)
-                    raw_results['gt'].append(j.cpu().data)
-                    raw_results['pred'].append(k.cpu().data)
-
-        valid_mss = f'Raw images: eval acc: {(100 * correct // total):.3f};'
+                    raw_results['gt'].append(int(j))
+                    raw_results['pred'].append(int(k))
+                    raw_results['ori'].append(l)
+                t.update(len(ims))
+        valid_mss = f'Raw images: eval acc: {(correct / total):.5f};'
         print_and_write_log(valid_mss,
-                            os.path.join(args.outputs_dir, 'det_logs.txt'))
+                            os.path.join(result_outputs_dir, 'det_logs.txt'))
         raw_results = pd.DataFrame(raw_results)
-        raw_results.to_csv(os.path.join(args.outputs_dir, 'before_result.csv'))
+        raw_results.to_csv(os.path.join(result_outputs_dir, 'before_result.csv'))
 
         epoch_acces = AverageMeter()
         correct = 0
         total = 0
         attack_results = {'name': [],
+                          'ori': [],
                           'gt': [],
                           'pred': []}
         with tqdm(desc='Attack sample generation phase =>',
@@ -197,16 +218,25 @@ if __name__ == '__main__':
                 total += gt_labels.size(0)
                 correct += (predicted == gt_labels).sum().item()
 
-                for i, j, k in zip(im_names, gt_labels, predicted):
+                for i, j, k, l in zip(im_names, gt_labels.cpu().numpy(), predicted.cpu().numpy(),  pred_labels.cpu().numpy()):
                     attack_results['name'].append(i)
-                    attack_results['gt'].append(j.cpu().data)
-                    attack_results['pred'].append(k.cpu().data)
+                    attack_results['gt'].append(j)
+                    attack_results['pred'].append(k)
+                    attack_results['ori'].append(l)
+                t.update(len(ims))
 
-        valid_mss = f'Attack images: eval acc: {(100 * correct // total):.3f};'
+        valid_mss = f'Attack images: eval acc: {(correct / total):.5f};'
         print_and_write_log(valid_mss,
-                            os.path.join(args.outputs_dir, 'det_logs.txt'))
+                            os.path.join(result_outputs_dir, 'det_logs.txt'))
         att_results = pd.DataFrame(attack_results)
-        att_results.to_csv(os.path.join(args.outputs_dir, 'after_result.csv'))
+        att_results.to_csv(os.path.join(result_outputs_dir, 'after_result.csv'))
+
+        print_and_write_log('raw details:\n', os.path.join(result_outputs_dir, 'det_logs.txt'))
+        print_and_write_log(ana_results(raw_results),
+                            os.path.join(result_outputs_dir, 'det_logs.txt'))
+        print_and_write_log('attack details:\n', os.path.join(result_outputs_dir, 'det_logs.txt'))
+        print_and_write_log(ana_results(att_results),
+                            os.path.join(result_outputs_dir, 'det_logs.txt'))
 
     torch.cuda.empty_cache()
     print("========> Detecting attack samples over.")

@@ -1,9 +1,9 @@
-'''
-@Description  : 
-@Author       : Chi Liu
-@Date         : 2022-03-26 23:17:55
-@LastEditTime : 2022-03-27 02:28:17
-'''
+# '''
+# @Description  :
+# @Author       : Chi Liu
+# @Date         : 2022-03-26 23:17:55
+# @LastEditTime : 2022-03-27 02:28:17
+# '''
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -57,3 +57,29 @@ class AE(nn.Module):
         x = F.relu(self.bn4(x))  # out [3, 2N, 2N, 1]
 
         return x
+# class AE(nn.Module):
+#     def __init__(self, **kwargs):
+#         super().__init__()
+#         self.encoder_hidden_layer = nn.Linear(
+#             in_features=kwargs["input_shape"], out_features=128
+#         )
+#         self.encoder_output_layer = nn.Linear(
+#             in_features=128, out_features=128
+#         )
+#         self.decoder_hidden_layer = nn.Linear(
+#             in_features=128, out_features=128
+#         )
+#         self.decoder_output_layer = nn.Linear(
+#             in_features=128, out_features=kwargs["input_shape"]
+#         )
+
+#     def forward(self, features):
+#         activation = self.encoder_hidden_layer(features)
+#         activation = torch.relu(activation)
+#         code = self.encoder_output_layer(activation)
+#         code = torch.relu(code)
+#         activation = self.decoder_hidden_layer(code)
+#         activation = torch.relu(activation)
+#         activation = self.decoder_output_layer(activation)
+#         reconstructed = torch.relu(activation)
+#         return reconstructed

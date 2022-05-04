@@ -2,7 +2,7 @@
 @Description  : fft script
 @Author       : Chi Liu
 @Date         : 2022-04-06 17:44:13
-@LastEditTime : 2022-04-06 20:12:42
+@LastEditTime : 2022-04-26 21:18:15
 '''
 from mimetypes import init
 import numpy as np
@@ -68,7 +68,8 @@ class FourierAnalysis(object):
             if i in [1, 5, 6]:
                 view = np.log(1 + np.abs(view))
                 view = (view - view.min()) / (view.max() - view.min()) * 255
-            if i == 4: view = view * 255
+            if i == 4:
+                view = view * 255
             view = np.clip(view, 0, 255)
             view = view.astype('uint8')
             ax.imshow(view)
@@ -85,5 +86,7 @@ class FourierAnalysis(object):
 
 
 if __name__ == '__main__':
-    im = './test2.jpg'
-    FA = FourierAnalysis(im, 20, './re.png')
+    im = '../../TR-Net/20211220_liuchi/detection/detection_dataset/test/fake/stargan-10.png'
+    FA = FourierAnalysis(im, 20, './fake.png')
+    im = '../../TR-Net/20211220_liuchi/detection/detection_dataset/test/real/stargan-10.png'
+    FA = FourierAnalysis(im, 20, './real.png')

@@ -2,7 +2,7 @@
 @Description  : 
 @Author       : Chi Liu
 @Date         : 2022-01-14 17:20:38
-@LastEditTime : 2022-03-28 22:32:35
+@LastEditTime : 2022-04-27 15:50:08
 '''
 
 import random
@@ -20,6 +20,7 @@ import pywt
 class DataAugmentation(object):
     """Data augmentation strategies (aka. Defense strategies). All functions get PIL image input and return to PIL image.
     """
+
     def __init__(
         self,
         prob=0.2,
@@ -158,6 +159,7 @@ class DataAugmentation(object):
 class DCT(object):
     """2D-DCT transformation. All functions get PIL image input and return to np.array.
     """
+
     def __init__(self, is_norm=True, is_log_scale=True):
         self.func_list = [self.dct2]
         if is_log_scale:
@@ -197,6 +199,7 @@ class DCT(object):
 class Wavelet(object):
     """wavelet transformation. All functions get PIL image input and return to np.array.
     """
+
     def __init__(self, is_norm=False):
         self.is_norm = is_norm
 
@@ -215,3 +218,53 @@ class Wavelet(object):
         arr = (np.max(arr, axis=(0, 1)) - arr) / (np.max(arr, axis=(0, 1)) -
                                                   (np.min(arr, axis=(0, 1))))
         return arr
+
+
+class FrequencyExchange(object):
+    def __init__(self, sources, target, thre):
+        """Exchange the high-frequency component of the target image with that of the source image(s). 
+
+        Args:
+            source: a batch of images
+            target: target image
+            thre: frequency threshold
+        """
+        assert isinstance(sources, list)
+        self.sources = sources
+        self.target = target
+        self.thre = thre
+        self.shape = target.shape
+        self.mask = self.circular_mask()
+
+    def __call__(self):
+        return self.hfe()
+
+    def circular_mask(self):
+        h, w, _ = self.shape
+        Y, X = np.ogrid[:h, :w]
+        center = (int(w / 2), int(h / 2))
+        dist_from_center = np.sqrt((X - center[0])**2 + (Y - center[1])**2)
+        mask = dist_from_center <= self.thre
+        return np.dstack([mask, mask, mask])
+
+    def hfe(self):
+        avg_s_high_fre = []
+        for source in self.sources:
+            s_fre = np.fft.fft2(source, axes=(0, 1))
+            s_fre_shift = np.fft.fftshift(s_fre)
+            s_low_fre = s_fre_shift * self.mask
+            s_high_fre = s_fre_shift * (1 - self.mask)
+            avg_s_high_fre.append(s_high_fre)
+        s_high_fre = np.mean(np.stack(avg_s_high_fre, axis=0), axis=0)
+
+        t_fre = np.fft.fft2(self.target, axes=(0, 1))
+        t_fre_shift = np.fft.fftshift(t_fre)
+        t_low_fre = t_fre_shift * self.mask
+        t_high_fre = t_fre_shift * (1 - self.mask)
+
+        t_exchange_fre = t_low_fre + s_high_fre
+        # t_exchange_fre = t_low_fre
+        t_exchange_im = np.abs(np.fft.ifft2(np.fft.ifftshift(t_exchange_fre), axes=(0, 1)))
+        view = np.clip(t_exchange_im, 0, 255)
+        view = view.astype('uint8')
+        return view

@@ -2,7 +2,7 @@
 @Description  : losses
 @Author       : Chi Liu
 @Date         : 2022-02-21 23:15:44
-@LastEditTime : 2022-04-15 23:10:34
+@LastEditTime : 2022-05-04 00:01:08
 '''
 import torch
 import torch.nn as nn
@@ -54,7 +54,7 @@ def spatial_loss(pred, target, loss_type):
             err = criterion(pred, target).mean()
         elif loss_type == 'mix':
             err = criterion0(pred, target) + criterion1(
-                pred, target) + 0.5 * criterion2(pred, target).mean()
+                pred, target) + criterion2(pred, target).mean()
 
         return err
 
@@ -87,5 +87,6 @@ def spectral_loss(pred, target, loss_type, is_reg, alpha, im_size):
 
 
 def detection_loss(pred, target):
-    criterion = nn.BCELoss()
+    criterion = nn.CrossEntropyLoss()
     return criterion(pred, target)
+=> 

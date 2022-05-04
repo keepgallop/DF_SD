@@ -11,14 +11,17 @@ import torch.backends.cudnn as cudnn
 from tqdm import tqdm
 from utils.utils import set_random_seed, AverageMeter, print_and_write_log
 from torch.utils.data.dataloader import DataLoader
-from dataset import DetectDataset
+from dataset import DetectDataset, DetectDatasetFromFolder
 from detector_nets import get_detector
 from transformations import DataAugmentation, DCT
 from loss import detection_loss
 import distutils.util
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import random_split
 
 if __name__ == '__main__':
+    print("Warning!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    print("Warning: This is a test copied from original detector!!!!!!!!!!!!!!!")
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-csv-file', type=str, required=True)
     parser.add_argument('--batch-size', type=int, default=128)
@@ -103,17 +106,13 @@ if __name__ == '__main__':
         train_trans.append(DCT())
         valid_trans.append(DCT())
 
-    train_dataset = DetectDataset(args.data_csv_file,
-                                  transform=train_trans,
-                                  allocation='train',
-                                  fake_class=args.fake_class,
-                                  length=args.train_length)
-    valid_dataset = DetectDataset(args.data_csv_file,
-                                  transform=valid_trans,
-                                  allocation='valid',
-                                  fake_class=args.fake_class,
-                                  length=args.valid_length)
-    print('dataset slice: \n', train_dataset.__details__())
+    dataset = DetectDatasetFromFolder('./test_results/unet/after/',
+                                      transform=train_trans,)
+    train_size = int(0.8 * len(dataset))
+    test_size = len(dataset) - train_size
+    train_dataset, valid_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+
+    print('dataset slice: \n', dataset.__details__())
 
     train_dataloader = DataLoader(
         dataset=train_dataset,
@@ -143,7 +142,7 @@ if __name__ == '__main__':
                                                     args.num_epochs-1))
 
             for data in train_dataloader:
-                ims, gt_labels, _, _ = data
+                ims, gt_labels, _ = data
 
                 ims = ims.to(device)
                 gt_labels = gt_labels.to(device)
@@ -177,7 +176,7 @@ if __name__ == '__main__':
         correct = 0
         total = 0
         for data in valid_dataloader:
-            ims, gt_labels, _, _ = data
+            ims, gt_labels, _ = data
             ims = ims.to(device)
             gt_labels = gt_labels.to(device)
 

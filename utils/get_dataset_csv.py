@@ -2,9 +2,12 @@
 @Description  : script to formulate dataset directory to a csv file with shuffle operation
 @Author       : Chi Liu
 @Date         : 2022-03-28 12:16:16
-@LastEditTime : 2022-03-28 22:51:52
+@LastEditTime : 2022-05-01 20:26:40
 '''
-#%%
+# %%
+import pandas as pd
+import torchvision.transforms as transforms
+from PIL import Image
 from fileinput import filename
 import os
 import glob
@@ -18,10 +21,11 @@ progan_path = '../../TR-Net/20211220_liuchi/data/progan/sewed/'
 stgan_path = '../../TR-Net/20211220_liuchi/data/stgan/sewed/'
 stargan_path = '../../TR-Net/20211220_liuchi/data/stargan/sewed/'
 mmdgan_path = '../dataset/4-MMDGAN/'
-
+sngan_path = '../dataset/2-SNGAN/'
+crgan_path = '../dataset/3-CramerGAN/'
 to_path = '../dataset/celeba-128/'
 
-#%%
+# %%
 celeba_list = glob.glob(celeba_path + '*.png')
 print(len(celeba_list))
 select_celeba_list = random.sample(celeba_list, 88000)
@@ -36,14 +40,23 @@ for i in glob.glob(os.path.join(stgan_path, '*.png')):
 for i in glob.glob(os.path.join(stargan_path, '*.png')):
     shutil.copy(i, os.path.join(to_path, 'stargan'))
 mmdgan_list = glob.glob(os.path.join(mmdgan_path, '*.png'))
-select_mmdgan_list = random.sample(celeba_list, 22000)
+select_mmdgan_list = random.sample(mmdgan_list, 22000)
 for i in select_mmdgan_list:
     shutil.copy(i, os.path.join(to_path, 'mmdgan'))
+
+sngan_list = glob.glob(os.path.join(sngan_path, '*.png'))
+select_sngan_list = random.sample(sngan_list, 22000)
+for i in select_sngan_list:
+    shutil.copy(i, os.path.join(to_path, 'sngan/'))
+
+crgan_list = glob.glob(os.path.join(crgan_path, '*.png'))
+select_crgan_list = random.sample(crgan_list, 22000)
+for i in select_crgan_list:
+    shutil.copy(i, os.path.join(to_path, 'crgan/'))
+
 print('fake done')
 
-#%%
-from PIL import Image
-import torchvision.transforms as transforms
+# %%
 
 
 def split_img(p):
@@ -62,8 +75,7 @@ for gan in ['progan', 'stgan', 'stargan']:
         split_img(i)
         print(gan, '--> done')
 
-#%%
-import pandas as pd
+# %%
 
 
 def create_128_list(data_path):
@@ -84,7 +96,7 @@ def create_128_list(data_path):
         for file in files:
             if file.endswith('png'):
                 file_names.append(os.path.join(root, file))
-    assert len(file_names) == 176000
+    assert len(file_names) == 220000
     random.shuffle(file_names)
 
     two_cls = []
@@ -106,9 +118,15 @@ def create_128_list(data_path):
         elif 'mmdgan' in file:
             two_cls.append('f')
             mul_cls.append('mmdgan')
-        if i + 1 <= 144000:
+        elif 'sngan' in file:
+            two_cls.append('f')
+            mul_cls.append('sngan')
+        elif 'crgan' in file:
+            two_cls.append('f')
+            mul_cls.append('crgan')
+        if i + 1 <= 154000:
             allocation.append('train')
-        elif i + 1 <= 160000:
+        elif i + 1 <= 176000:
             allocation.append('valid')
         else:
             allocation.append('test')
@@ -124,7 +142,7 @@ def create_128_list(data_path):
 
 df = create_128_list('../dataset/celeba-128/')
 
-#%%
+# %%
 print(df.head(10))
 print(len(df))
 print(
@@ -134,6 +152,8 @@ print(
     sum(df['mul_cls'] == 'stgan'),
     sum(df['mul_cls'] == 'stargan'),
     sum(df['mul_cls'] == 'mmdgan'),
+    sum(df['mul_cls'] == 'sngan'),
+    sum(df['mul_cls'] == 'crgan'),
 )
 
 print(sum(df['allocation'] == 'train'), sum(df['allocation'] == 'valid'),
@@ -155,3 +175,5 @@ df['filename'] = tmp
 
 # %%
 df.to_csv('../dataset/celeba-128/celeba_128.csv', index=False)
+
+# %%

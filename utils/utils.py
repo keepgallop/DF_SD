@@ -2,7 +2,7 @@
 @Description  : 
 @Author       : Chi Liu
 @Date         : 2022-03-28 11:40:22
-@LastEditTime : 2022-03-29 18:21:22
+@LastEditTime : 2022-05-01 21:58:26
 '''
 import os
 import random
@@ -12,6 +12,10 @@ import torch
 import torch.nn.init as init
 from torchvision.utils import make_grid, save_image
 import numpy as np
+from torchvision import transforms
+from utils import psd_loss
+import glob
+import matplotlib.pyplot as plt
 
 
 def weights_init(net, init_type='normal', init_gain=0.02):
@@ -128,3 +132,60 @@ def print_and_write_log(message, log_file=None):
     if log_file is not None:
         with open(log_file, 'a+') as f:
             f.write('%s\n' % message)
+
+
+def save_batch_image(ims, from_name_list, to_path):
+    """save batched torch.tensor images from graph
+    """
+    for im, name in zip(ims, from_name_list):
+        name = name.split('/')[-1]
+        im_to_path = os.path.join(to_path, name)
+        save_image(im, im_to_path)
+
+
+def visualize_spectral_distribution(bp='', ap='', num=1000, types=['real', 'progan', 'stgan', 'mmdgan']):
+    """visualize spectral distribution before and after attack
+
+    Args:
+        bp (str): before path
+        ap (str): after path
+        num (int): numbers 
+        types (list): selected labels
+    """
+    PSD = psd_loss.PSDLoss(128, 128)
+
+    b_cans = glob.glob(os.path.join(bp + "*.png"))
+    a_cans = glob.glob(os.path.join(ap + "*.png"))
+    random.shuffle(b_cans)
+    random.shuffle(a_cans)
+    plt.figure(figsize=(15, 10))
+    for t in types:
+        bt_list = []
+        at_list = []
+        for i, j in zip(b_cans, a_cans):
+            if t in i:
+                bt_list.append(i)
+            if t in j:
+                at_list.append(j)
+        bt_list = bt_list[:num]
+        at_list = at_list[:num]
+        # print(t, len(bt_list), len(at_list), bt_list[:10], at_list[:10])
+        b_ims = torch.from_numpy(np.array([np.array(I.open(i)) for i in bt_list])).to('cuda:0')
+        a_ims = torch.from_numpy(np.array([np.array(I.open(i)) for i in at_list])).to('cuda:0')
+
+        b_ims = b_ims.permute(0, 3, 1, 2).to(torch.float)
+        a_ims = a_ims.permute(0, 3, 1, 2).to(torch.float)
+
+        b_spectrum = PSD.spectral_vector(b_ims).cpu()
+        a_spectrum = PSD.spectral_vector(a_ims).cpu()
+        plt.plot(b_spectrum.mean(0), '-.', label=f'{t}-before')
+        plt.plot(a_spectrum.mean(0), '-', label=f'{t}-after')
+    plt.legend()
+
+
+def average_spectra(im_list, number):
+    ims = np.array([np.array(Image.open(i).convert('L')) for i in im_list[0:number]])
+    ffts = np.fft.fftshift(np.fft.fft2(ims))
+    fft_mean = np.mean(abs(ffts), axis=0)
+    fft_mean = np.log(fft_mean + 1e-10)
+    return fft_mean
