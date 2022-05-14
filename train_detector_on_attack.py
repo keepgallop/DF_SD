@@ -20,10 +20,10 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import random_split
 
 if __name__ == '__main__':
-    print("Warning!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-    print("Warning: This is a test copied from original detector!!!!!!!!!!!!!!!")
+    # print("Warning!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    # print("Warning: This is a test copied from original detector!!!!!!!!!!!!!!!")
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data-csv-file', type=str, required=True)
+    parser.add_argument('--data_dir', type=str, required=True)
     parser.add_argument('--batch-size', type=int, default=128)
     parser.add_argument('--num-workers', type=int, default=8)
     parser.add_argument('--weights-file', type=str)
@@ -49,18 +49,23 @@ if __name__ == '__main__':
     parser.add_argument('--det_net', type=str, default='xception')
     parser.add_argument('--fake-class', nargs='+')
     parser.add_argument('--seed', type=int, default=123)
-    parser.add_argument('--train-length', type=int, default=0)
-    parser.add_argument('--valid-length', type=int, default=0)
+    parser.add_argument('--length', type=int, default=0)
 
     args = parser.parse_args()
+
+    data_dir_name = args.data_dir.split('/')[-2]
     args.outputs_dir = os.path.join(
         args.outputs_dir,
-        f'x{args.im_size}-{args.det_net}-aug-{int(args.aug)}-{str().join(args.fake_class)}-{args.feature_space}'
+        f'{data_dir_name}-{args.det_net}-{str().join(args.fake_class)}'
     )
 
     if not os.path.exists(args.outputs_dir):
         os.makedirs(args.outputs_dir)
     print("experimental folder = ", args.outputs_dir)
+
+    for key, value in args.__dict__.items():
+        print_and_write_log(f'{key}: {value}\n',
+                            os.path.join(args.outputs_dir, 'logs.txt'))
 
     cudnn.benchmark = True
     device = torch.device('cuda:%d' %
@@ -95,7 +100,7 @@ if __name__ == '__main__':
         train_trans.append(DataAugmentation(prob=0.1,
                                             is_blur=True,
                                             is_jpeg=True,
-                                            is_noise=False,
+                                            is_noise=True,
                                             is_jitter=False,
                                             is_geo=False,
                                             is_crop=False,
@@ -106,9 +111,11 @@ if __name__ == '__main__':
         train_trans.append(DCT())
         valid_trans.append(DCT())
 
-    dataset = DetectDatasetFromFolder('./test_results/unet/after/',
-                                      transform=train_trans,)
-    train_size = int(0.8 * len(dataset))
+    dataset = DetectDatasetFromFolder(args.data_dir,
+                                      transform=train_trans,
+                                      fake_class=args.fake_class,
+                                      length=args.length)
+    train_size = int(0.9 * len(dataset))
     test_size = len(dataset) - train_size
     train_dataset, valid_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
 

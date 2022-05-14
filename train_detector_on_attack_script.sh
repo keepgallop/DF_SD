@@ -1,24 +1,22 @@
-for feature_space in 'rgb' #'dct' 
+for data_dir in 'dataset/attack_stage1_samples/rdn-ssim-fft/rdn/after/' 'dataset/attack_stage1_samples/unet-ssim-fft/unet/after/' 'dataset/attack_stage1_samples/vae-ssim-fft/vae/after/'
 do
-    for aug in 0 1
-    do
-        for net in 'resnet' # 'resnet' 
+for net in 'efficientnet' 'resnet' 'xception' 
+do
+for fake_class in 'all' 'progan' 
         do
-            echo 'net = ' $net 'aug = ' $aug
-            python3 train_detector_on_attack.py --data-csv-file dataset/celeba-128/celeba_128.csv \
+            python3 train_detector_on_attack.py --data_dir $data_dir \
                                         --batch-size 250 \
                                         --lr 1.6e-3 \
-                                        --num-epochs 100 \
-                                        --num-save 10 \
-                                        --outputs-dir det_outputs/train_on_attack\
+                                        --num-epochs 50 \
+                                        --num-save 25 \
+                                        --outputs-dir det_training_log/train_on_attack\
                                         --im_size 128 \
                                         --det_net $net \
-                                        --train-length 0 \
-                                        --valid-length 0 \
-                                        --aug $aug \
+                                        --length 20000 \
+                                        --aug 0 \
                                         --opt adam \
-                                        --fake-class 'all' \
-                                        --feature-space $feature_space
+                                        --fake-class $fake_class \
+                                        --feature-space 'rgb'
         done
     done
 done

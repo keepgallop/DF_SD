@@ -11,10 +11,10 @@ import torch.backends.cudnn as cudnn
 from tqdm import tqdm
 from utils.utils import set_random_seed, AverageMeter, print_and_write_log, save_batch_image, tensor2im, grid_save
 from torch.utils.data.dataloader import DataLoader
-from dataset import AttackDataset, DetectDatasetFromFolder
+from dataset import AttackDataset2, Subset, DetectDatasetFromFolder
 from detector_nets import get_detector
 from attacker_nets import get_attacker
-from transformations import DCT, Wavelet, WaveletFilterResize
+from transformations import DCT, Wavelet
 import distutils.util
 import numpy as np
 from metrics import psnr, ssim, lfd
@@ -23,11 +23,11 @@ import pandas as pd
 
 def ana_results(results):
     mss = ''
-    for fake_class in ['real', 'progan', 'mmdgan', 'stgan', 'stargan', 'crgan', 'sngan']:
+    for fake_class in ['progan', 'mmdgan', 'stgan', 'stargan', 'crgan', 'sngan']:
         correct = 0
         total = 0
         for i in range(len(results)):
-            if fake_class in att_results['name'][i]:
+            if fake_class in results['name'][i]:
                 # print(att_results['gt'][i])
                 total += 1
                 if results['gt'][i] == results['pred'][i]:
@@ -38,7 +38,8 @@ def ana_results(results):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data-csv-file', type=str, required=True)
+    parser.add_argument('--data-path', type=str, required=True)
+    parser.add_argument('--data_length', type=int, default=0, required=True)
     parser.add_argument('--outputs-dir', type=str, required=True)
 
     parser.add_argument('--batch-size', type=int, default=128)
@@ -47,7 +48,7 @@ if __name__ == '__main__':
     parser.add_argument('--detector-ckpt', type=str)
     parser.add_argument('--det_net', type=str, default='xception')
     parser.add_argument('--att_net', type=str, default='rdn')
-    parser.add_argument('--allocation', type=str, default='test')
+    # parser.add_argument('--allocation', type=str, default='test')
     parser.add_argument('--feature-space', type=str, default='rgb')
     parser.add_argument('--gpu-id', type=int, default=0)
     parser.add_argument('--im_size', type=int, default=128)
@@ -81,13 +82,12 @@ if __name__ == '__main__':
     if args.new_attack:
         ####  load test data ####
 
-        # test_att_trans = Wavelet(is_norm=True)
-        test_att_trans = WaveletFilterResize()
+        dataset = AttackDataset2(folder_path=args.data_path,
+                                 mode='attack',
+                                 length=args.data_length)
+        test_indices = [i for i in range(len(dataset))]
 
-        test_att_dataset = AttackDataset(args.data_csv_file,
-                                         transform=test_att_trans,
-                                         allocation=args.allocation,
-                                         length=5000)
+        test_att_dataset = Subset(dataset, test_indices, transform=[])
 
         test_att_dataloader = DataLoader(dataset=test_att_dataset,
                                          batch_size=args.batch_size,
@@ -117,13 +117,13 @@ if __name__ == '__main__':
                              len(test_att_dataset) % args.batch_size), ncols=80) as t:
                 t.set_description('Attack sample generation Progress:')
                 for data in test_att_dataloader:
-                    ds_im, raw_im, im_name = data  # note: batch size = 1
+                    raw_im, att1_im, im_name = data  # note: batch size = 1
 
-                    im_name = [i.lstrip('./dataset/').replace('/', '-') for i in im_name]
+                    im_name = [i.split('/')[-1] for i in im_name]
 
-                    ds_im = ds_im.to(device)
                     raw_im = raw_im.to(device)
-                    out_im = att_model(ds_im)
+                    att1_im = att1_im.to(device)
+                    out_im = att_model(att1_im)
 
                     save_batch_image(raw_im, im_name, before_save_path)
                     save_batch_image(out_im, im_name, after_save_path)
@@ -134,7 +134,7 @@ if __name__ == '__main__':
                         epoch_psnr.update(psnr(i, j), n=1)
                         epoch_ssim.update(ssim(i, j), n=1)
                         epoch_lfd.update(lfd(i, j), n=1)
-                    t.update(len(ds_im))
+                    t.update(len(raw_im))
             test_mss = f'eval psnr: {epoch_psnr.avg:.3f}; eval ssim: {epoch_ssim.avg:.3f}; eval lfd: {epoch_lfd.avg:.3f};'
             print_and_write_log(test_mss,
                                 os.path.join(result_outputs_dir, 'att_logs.txt'))
@@ -151,10 +151,10 @@ if __name__ == '__main__':
 
     test_det_trans = None if args.feature_space == 'rgb' else DCT()
     test_det_dataset_before = DetectDatasetFromFolder(before_save_path,
-                                                      transform=test_det_trans,
-                                                      length=5000)
+                                                      transform=test_det_trans)
     test_det_dataset_after = DetectDatasetFromFolder(after_save_path,
-                                                     transform=test_det_trans, length=5000)
+                                                     transform=test_det_trans)
+
     test_det_dataloader_before = DataLoader(dataset=test_det_dataset_before,
                                             batch_size=args.batch_size,
                                             shuffle=False,

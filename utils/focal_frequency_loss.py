@@ -8,7 +8,7 @@ IS_HIGH_VERSION = tuple(map(int,
                                 1,
                                 7,
                                 1,
-                            )
+)
 if IS_HIGH_VERSION:
     import torch.fft
 
@@ -28,6 +28,7 @@ class FocalFrequencyLoss(nn.Module):
         batch_matrix (bool): whether to calculate the spectrum weight matrix using batch-based statistics. Default: False
         fre_mode (str): fft or dct
     """
+
     def __init__(
         self,
         loss_weight=1.0,
@@ -114,7 +115,7 @@ class FocalFrequencyLoss(nn.Module):
             # frequency distance using (squared) Euclidean distance
             tmp = (recon_freq - real_freq)**2
             freq_distance = tmp[..., 0] + tmp[..., 1]
-    
+
             # dynamic spectrum weighting (Hadamard product)
             loss = weight_matrix * freq_distance
             return torch.mean(loss)

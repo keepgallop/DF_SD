@@ -2,7 +2,7 @@
 @Description  : 
 @Author       : Chi Liu
 @Date         : 2022-03-28 11:40:22
-@LastEditTime : 2022-05-01 21:58:26
+@LastEditTime : 2022-05-09 20:01:10
 '''
 import os
 import random
@@ -16,6 +16,7 @@ from torchvision import transforms
 from utils import psd_loss
 import glob
 import matplotlib.pyplot as plt
+from PIL import Image as I
 
 
 def weights_init(net, init_type='normal', init_gain=0.02):
@@ -143,7 +144,7 @@ def save_batch_image(ims, from_name_list, to_path):
         save_image(im, im_to_path)
 
 
-def visualize_spectral_distribution(bp='', ap='', num=1000, types=['real', 'progan', 'stgan', 'mmdgan']):
+def visualize_spectral_distribution(bp='', ap='', num=1000, types=['real', 'progan', 'stgan', 'mmdgan'], shape=(128, 128)):
     """visualize spectral distribution before and after attack
 
     Args:
@@ -152,7 +153,7 @@ def visualize_spectral_distribution(bp='', ap='', num=1000, types=['real', 'prog
         num (int): numbers 
         types (list): selected labels
     """
-    PSD = psd_loss.PSDLoss(128, 128)
+    PSD = psd_loss.PSDLoss(shape[0], shape[1])
 
     b_cans = glob.glob(os.path.join(bp + "*.png"))
     a_cans = glob.glob(os.path.join(ap + "*.png"))

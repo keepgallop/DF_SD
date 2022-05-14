@@ -2,7 +2,7 @@
 @Description  : losses
 @Author       : Chi Liu
 @Date         : 2022-02-21 23:15:44
-@LastEditTime : 2022-05-04 00:01:08
+@LastEditTime : 2022-05-08 22:46:42
 '''
 import torch
 import torch.nn as nn
@@ -89,4 +89,3 @@ def spectral_loss(pred, target, loss_type, is_reg, alpha, im_size):
 def detection_loss(pred, target):
     criterion = nn.CrossEntropyLoss()
     return criterion(pred, target)
-=> 

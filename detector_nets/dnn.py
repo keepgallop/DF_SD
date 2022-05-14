@@ -2,7 +2,7 @@
 @Description  : 
 @Author       : Chi Liu
 @Date         : 2022-01-13 16:28:04
-@LastEditTime : 2022-04-22 16:28:41
+@LastEditTime : 2022-05-10 23:22:59
 '''
 from torch import nn
 import torch
@@ -11,7 +11,7 @@ import timm
 
 
 class DeepCNN():
-    def __init__(self, is_pretrain=False, n_class=2):
+    def __init__(self, is_pretrain=True, n_class=2):
         super().__init__()
 
         self.is_pretrain = is_pretrain

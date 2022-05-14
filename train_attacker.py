@@ -15,7 +15,7 @@ from utils.utils import set_random_seed, AverageMeter, grid_save, print_and_writ
 from torch.utils.data.dataloader import DataLoader
 from dataset import AttackDataset
 from attacker_nets import get_attacker
-from transformations import Wavelet, DataAugmentation
+from transformations import Wavelet, DataAugmentation, WaveletFilterResize
 from torchsummary import summary
 from loss import spatial_loss, spectral_loss
 import functools
@@ -106,7 +106,6 @@ if __name__ == '__main__':
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-#! ##############  modification input 64 -> 128 ##############
     if args.aug:
         train_trans = [
             DataAugmentation(prob=0.2,
@@ -118,15 +117,14 @@ if __name__ == '__main__':
                              is_crop=False,
                              is_rot=False,
                              is_high=False),
-            # Wavelet(is_norm=True) #! modification
+            WaveletFilterResize()
         ]
 
     else:
-        # train_trans = Wavelet(is_norm=True) #! modification
-        train_trans = []
+        # train_trans = Wavelet(is_norm=True)
+        train_trans = WaveletFilterResize()
     # valid_trans = Wavelet(is_norm=True)
-    valid_trans = []
-#! ##############  modification input 64 -> 128 ##############
+    valid_trans = WaveletFilterResize()
 
     train_dataset = AttackDataset(args.data_csv_file,
                                   transform=train_trans,

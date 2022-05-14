@@ -2,13 +2,17 @@
 @Description  : 
 @Author       : Chi Liu
 @Date         : 2022-01-14 17:20:38
-@LastEditTime : 2022-04-27 15:50:08
+@LastEditTime : 2022-05-09 21:44:56
 '''
 
+from skimage.restoration import (denoise_wavelet, estimate_sigma)
+import glob
+import os
+
 import random
-import PIL
+
 from PIL import Image as I
-from cv2 import normalize
+
 import torchvision.transforms as transforms
 from io import BytesIO
 import numpy as np
@@ -216,6 +220,36 @@ class Wavelet(object):
 
     def normalize(self, arr):
         arr = (np.max(arr, axis=(0, 1)) - arr) / (np.max(arr, axis=(0, 1)) -
+                                                  (np.min(arr, axis=(0, 1))))
+        return arr
+
+
+class WaveletFilterResize(object):
+    """wavelet filter and then resize to downsize
+    """
+
+    def __init__(self, is_norm=False, sigma=0.5):
+        self.is_norm = is_norm
+        self.sigma = sigma
+
+    def __call__(self, img):
+        if self.is_norm:
+            return self.normalize(self.wfr(img)).astype(np.float32)
+        else:
+            return self.wfr(img).astype(np.float32)
+
+    def wfr(self, arr):
+        arr = np.array(arr)
+        fil_arr = denoise_wavelet(arr, multichannel=True, convert2ycbcr=True,
+                                  method='BayesShrink', mode='soft', sigma=self.sigma)*255
+        fil_arr = fil_arr.astype(np.uint8)
+        fil_arr = I.fromarray(fil_arr)
+        w, h = fil_arr.size[:2]
+        fil_arr = fil_arr.resize((int(w/2), int(h/2)))
+        return np.array(fil_arr)
+
+    def normalize(self, arr):
+        arr = (arr - np.min(arr, axis=(0, 1))) / (np.max(arr, axis=(0, 1)) -
                                                   (np.min(arr, axis=(0, 1))))
         return arr
 
